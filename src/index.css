@@ -347,3 +347,131 @@ button.danger {
 button.danger:hover {
   background: #fee2e2;
 }
+
+/* ---------- WBS 커스텀 노드 ---------- */
+.wbs-node {
+  width: 200px;
+  background: #fff;
+  border: 2px solid #6b7280;
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  font-size: 13px;
+}
+
+.wbs-node.selected {
+  box-shadow: 0 0 0 2px #6366f1;
+}
+
+.wbs-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+.wbs-status {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.wbs-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1f2937;
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+.wbs-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.wbs-percent {
+  font-weight: 700;
+}
+
+.wbs-progress {
+  height: 6px;
+  background: #f3f4f6;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.wbs-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+/* ---------- WBS 편집 폼 ---------- */
+.wbs-form label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #374151;
+}
+
+.wbs-form input[type='text'],
+.wbs-form input:not([type]) {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.wbs-form input[type='range'] {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.wbs-form button[type='submit'] {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.status-group {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.status-btn {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #f9fafb;
+  color: #6b7280;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.status-btn.active {
+  font-weight: 700;
+}

@@ -10,7 +10,39 @@ import type { Edge, Node } from '@xyflow/react'
  * - 여러 참여자가 동시에 같은 보드를 편집해도 CRDT 가 자동으로 병합한다.
  */
 
-export type BoardNode = Node<{ label: string }>
+/** WBS 작업 상태 */
+export type WbsStatus = 'todo' | 'doing' | 'done'
+
+/** 일반(브레인스토밍) 노드 데이터 */
+export interface PlainNodeData {
+  label: string
+  // React Flow 의 Node<T> 제약(Record<string, unknown>) 충족용 인덱스 시그니처
+  [key: string]: unknown
+}
+
+/** WBS(작업 분해) 노드 데이터 */
+export interface WbsNodeData {
+  label: string
+  /** 담당자 */
+  assignee: string
+  /** 상태: 할 일 / 진행 중 / 완료 */
+  status: WbsStatus
+  /** 진행률 0~100 */
+  progress: number
+  /** 노드 타입 식별용 (data 로도 구분할 수 있게 둠) */
+  kind: 'wbs'
+  // React Flow 의 Node<T> 제약 충족용 인덱스 시그니처
+  [key: string]: unknown
+}
+
+export type BoardNodeData = PlainNodeData | WbsNodeData
+
+/** WBS 노드인지 좁혀주는 타입 가드 */
+export function isWbsData(data: BoardNodeData): data is WbsNodeData {
+  return (data as WbsNodeData).kind === 'wbs'
+}
+
+export type BoardNode = Node<BoardNodeData>
 export type BoardEdge = Edge
 
 export interface CollabHandle {

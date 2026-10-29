@@ -7,7 +7,13 @@ import {
   type EdgeChange,
   type NodeChange,
 } from '@xyflow/react'
-import { connectRoom, type BoardEdge, type BoardNode, type CollabHandle } from './yjs'
+import {
+  connectRoom,
+  type BoardEdge,
+  type BoardNode,
+  type CollabHandle,
+  type WbsNodeData,
+} from './yjs'
 
 export interface AwarenessUser {
   name: string
@@ -118,13 +124,46 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     handle.nodes.set(id, node)
   }, [])
 
-  /** 노드 라벨 수정 */
+  /** 노드 라벨 수정 (일반 노드) */
   const renameNode = useCallback((id: string, label: string) => {
     const handle = handleRef.current
     if (!handle) return
     const existing = handle.nodes.get(id)
     if (!existing) return
     handle.nodes.set(id, { ...existing, data: { ...existing.data, label } })
+  }, [])
+
+  /** 새 WBS(작업) 노드 추가 */
+  const addWbsNode = useCallback((position: { x: number; y: number }) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const id = `wbs-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+    const node: BoardNode = {
+      id,
+      position,
+      type: 'wbs',
+      data: {
+        label: '새 작업',
+        assignee: '',
+        status: 'todo',
+        progress: 0,
+        kind: 'wbs',
+      },
+    }
+    handle.nodes.set(id, node)
+    return id
+  }, [])
+
+  /** WBS 노드 필드 수정 (부분 업데이트) */
+  const updateWbsNode = useCallback((id: string, patch: Partial<WbsNodeData>) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing) return
+    handle.nodes.set(id, {
+      ...existing,
+      data: { ...existing.data, ...patch },
+    })
   }, [])
 
   return useMemo(
@@ -138,7 +177,21 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       onConnect,
       addNode,
       renameNode,
+      addWbsNode,
+      updateWbsNode,
     }),
-    [nodes, edges, peers, connected, onNodesChange, onEdgesChange, onConnect, addNode, renameNode],
+    [
+      nodes,
+      edges,
+      peers,
+      connected,
+      onNodesChange,
+      onEdgesChange,
+      onConnect,
+      addNode,
+      renameNode,
+      addWbsNode,
+      updateWbsNode,
+    ],
   )
 }
