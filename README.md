@@ -11,6 +11,7 @@
 | 캔버스 / 노드 UI | [React Flow (`@xyflow/react`)](https://reactflow.dev) |
 | 실시간 동기화 | [Yjs](https://docs.yjs.dev) (CRDT) + `y-websocket` |
 | 실시간 서버 | Node.js + `ws` + `y-websocket` 유틸 |
+| 방/권한 관리 API | Node.js + Express + JWT(`jsonwebtoken`) + `bcryptjs` |
 | 영속화(저장) | SQLite (Node.js 내장 `node:sqlite`) |
 
 > **왜 Yjs(CRDT)인가?** 여러 명이 동시에 같은 노드를 옮기거나 수정해도 충돌 없이 자동 병합됩니다. 협업 보드의 가장 어려운 "동시 편집" 문제를 해결하는 핵심입니다.
@@ -24,12 +25,23 @@
 ├── vite.config.ts
 ├── server/
 │   ├── index.js            # y-websocket 실시간 서버
-│   └── persistence.js      # SQLite 영속화 (방별 Yjs 문서 저장/복원)
+│   ├── persistence.js      # SQLite 영속화 (방별 Yjs 문서 저장/복원)
+│   └── api/                # 방/권한 관리 REST API 서버
+│       ├── index.js        #   서버 엔트리 (Express, 포트 3001)
+│       ├── db.js           #   users / rooms / room_members 테이블
+│       ├── auth.js         #   회원가입·로그인 + JWT 미들웨어
+│       └── rooms.js        #   방 생성/목록/초대/권한 체크
 └── src/
     ├── main.tsx
-    ├── App.tsx             # 로비(방 입장 화면)
-    ├── Board.tsx           # React Flow 캔버스 + 툴바
+    ├── App.tsx             # 인증 → 방 목록 → 보드 흐름 제어
+    ├── Board.tsx           # React Flow 캔버스 + 툴바 + 멤버 패널
     ├── index.css
+    ├── api/
+    │   └── client.ts       # REST API 호출 + JWT 토큰 관리
+    ├── screens/
+    │   ├── AuthScreen.tsx       # 로그인 / 회원가입
+    │   ├── RoomListScreen.tsx   # 내 보드 목록 / 방 생성
+    │   └── MembersPanel.tsx     # 멤버 초대 / 강퇴 (팀장)
     └── collab/
         ├── yjs.ts          # Yjs 문서 / 방 연결 레이어
         └── useCollabBoard.ts  # React Flow <-> Yjs 브릿지 훅
@@ -37,27 +49,36 @@
 
 ## 실행 방법
 
+터미널 **3개**가 필요합니다. (실시간 서버 / API 서버 / 웹 앱)
+
 ### 1. 의존성 설치
 ```bash
 npm install
 ```
 
-### 2. 실시간 서버 실행 (터미널 1)
+### 2. 실시간 동기화 서버 (터미널 1)
 ```bash
 npm run server
 ```
-`ws://localhost:1234` 에서 협업 서버가 뜹니다.
+`ws://localhost:1234` — 노드/엣지 실시간 동기화 + SQLite 저장 담당.
 
-### 3. 웹 앱 실행 (터미널 2)
+### 3. 방/권한 관리 API 서버 (터미널 2)
+```bash
+npm run api
+```
+`http://localhost:3001` — 회원가입/로그인, 방 생성/초대/권한 담당.
+
+### 4. 웹 앱 (터미널 3)
 ```bash
 npm run dev
 ```
 브라우저에서 `http://localhost:5173` 접속.
 
-### 4. 실시간 동기화 확인
-1. 닉네임과 방 이름(예: `fsa-demo`)을 입력하고 **방 입장**
-2. 브라우저 탭을 하나 더 열어 **같은 방 이름**으로 접속
-3. 한쪽에서 노드를 추가/이동/연결하면 다른 쪽에 즉시 반영됩니다.
+### 5. 사용 흐름 확인
+1. **회원가입/로그인** 후 **내 보드 목록** 화면 진입
+2. **+ 방 만들기** 로 새 보드 생성 (만든 사람이 팀장이 됨)
+3. 보드 안의 **멤버 관리** 에서 팀원 이메일로 초대 (팀원도 미리 회원가입 필요)
+4. 초대된 팀원이 로그인하면 **내 보드 목록**에 해당 방이 보이고, 입장하면 실시간으로 함께 편집
 
 ## 영속화 (데이터 저장)
 
@@ -75,6 +96,28 @@ DB 파일 위치는 환경변수 `DB_PATH` 로 바꿀 수 있습니다. (`board.
 DB_PATH=data/myboard.db npm run server
 ```
 
+## 계정 & 권한
+
+| 역할 | 권한 |
+|------|------|
+| **팀장 (owner)** | 방 생성자. 멤버 초대/강퇴, 방 삭제, 편집 모두 가능 |
+| **참여자 (member)** | 방 입장 및 편집만 가능 (초대/삭제 불가) |
+
+- 인증은 **JWT** 기반이며, 로그인 토큰은 브라우저 `localStorage` 에 저장됩니다.
+- 비밀번호는 `bcrypt` 로 해싱되어 저장됩니다 (평문 저장 안 함).
+- 방 이름을 입력하면 실시간 동기화용 식별자(slug)가 자동 생성됩니다. 한글 방 이름도 지원합니다.
+- 권한 체크는 **서버(API)에서** 수행하므로, 초대받지 않은 사용자는 방 데이터에 접근할 수 없습니다.
+
+### 서버 환경변수
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `JWT_SECRET` | (개발용 기본값) | JWT 서명 비밀키 — **운영에서는 반드시 변경** |
+| `API_PORT` | `3001` | API 서버 포트 |
+| `DB_PATH` | `board.db` | SQLite 파일 경로 |
+| `VITE_API_URL` | `http://localhost:3001/api` | 프론트가 호출할 API 주소 |
+| `VITE_WS_URL` | `ws://localhost:1234` | 프론트가 접속할 실시간 서버 주소 |
+
 ## 사용법
 
 | 동작 | 방법 |
@@ -88,7 +131,7 @@ DB_PATH=data/myboard.db npm run server
 ## 다음 단계 아이디어
 
 - [x] 보드 영속화 (SQLite — 서버 재시작해도 보드 유지)
-- [ ] 방/권한 관리를 위한 백엔드 추가 (NestJS/Express + JWT)
+- [x] 방/권한 관리 백엔드 (Express + JWT — 회원가입/로그인/초대/권한)
 - [ ] 마인드맵 자동 레이아웃, WBS 전용 노드 타입
 - [ ] 실시간 커서/선택 영역 표시 (Yjs awareness 확장)
 - [ ] 배포 (프론트: Vercel · 웹소켓 서버: Railway/Render/Fly.io)

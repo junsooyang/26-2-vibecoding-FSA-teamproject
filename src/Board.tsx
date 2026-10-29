@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -11,14 +11,19 @@ import {
 import '@xyflow/react/dist/style.css'
 import { useCollabBoard, type AwarenessUser } from './collab/useCollabBoard'
 import type { BoardNode } from './collab/yjs'
+import MembersPanel from './screens/MembersPanel'
 
 interface BoardProps {
+  /** 실시간 동기화용 방 식별자(slug) */
   room: string
+  /** 화면에 표시할 방 이름 */
+  roomName: string
   user: AwarenessUser
   onLeave: () => void
 }
 
-function BoardInner({ room, user, onLeave }: BoardProps) {
+function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
+  const [showMembers, setShowMembers] = useState(false)
   const {
     nodes,
     edges,
@@ -58,11 +63,11 @@ function BoardInner({ room, user, onLeave }: BoardProps) {
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <div className="toolbar">
-        <strong>방: {room}</strong>
+        <strong>{roomName}</strong>
         <span className={connected ? 'dot online' : 'dot offline'} />
         <span>{connected ? '실시간 연결됨' : '연결 시도 중...'}</span>
         <span className="peers">
-          참여자 {peers.length}명
+          접속 {peers.length}명
           {peers.map((p, i) => (
             <span key={i} className="peer-chip" style={{ background: p.color }}>
               {p.name}
@@ -70,8 +75,11 @@ function BoardInner({ room, user, onLeave }: BoardProps) {
           ))}
         </span>
         <span className="hint">빈 공간 더블클릭: 노드 추가 · 노드 더블클릭: 수정 · 점끼리 드래그: 연결</span>
-        <button onClick={onLeave}>방 나가기</button>
+        <button onClick={() => setShowMembers(true)}>멤버 관리</button>
+        <button onClick={onLeave}>나가기</button>
       </div>
+
+      {showMembers && <MembersPanel slug={room} onClose={() => setShowMembers(false)} />}
 
       <ReactFlow
         nodes={nodes}
