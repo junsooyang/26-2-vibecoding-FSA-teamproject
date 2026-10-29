@@ -6,7 +6,7 @@
  * 테이블은 분리되어 있어 충돌하지 않는다.
  *
  * 테이블:
- *  - users:        사용자 계정 (이메일/해시된 비밀번호)
+ *  - users:        사용자 계정 (아이디/해시된 비밀번호)
  *  - rooms:        방 (slug = 실시간 동기화에서 쓰는 방 이름, owner = 팀장)
  *  - room_members: 방-사용자 관계 + 역할(owner / member)
  */
@@ -21,7 +21,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    email         TEXT UNIQUE NOT NULL,
+    username      TEXT UNIQUE NOT NULL,
     name          TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     created_at    INTEGER NOT NULL

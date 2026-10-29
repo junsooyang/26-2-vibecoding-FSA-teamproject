@@ -10,7 +10,7 @@ interface Props {
 export default function MembersPanel({ slug, onClose }: Props) {
   const [members, setMembers] = useState<Member[]>([])
   const [myRole, setMyRole] = useState<'owner' | 'member'>('member')
-  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteUsername, setInviteUsername] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -33,12 +33,12 @@ export default function MembersPanel({ slug, onClose }: Props) {
 
   const invite = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inviteEmail.trim()) return
+    if (!inviteUsername.trim()) return
     setError(null)
     try {
-      const res = await api.inviteMember(slug, inviteEmail.trim())
+      const res = await api.inviteMember(slug, inviteUsername.trim())
       setMembers(res.members)
-      setInviteEmail('')
+      setInviteUsername('')
     } catch (err) {
       setError(err instanceof Error ? err.message : '초대에 실패했습니다.')
     }
@@ -67,12 +67,11 @@ export default function MembersPanel({ slug, onClose }: Props) {
         {myRole === 'owner' && (
           <form className="create-row" onSubmit={invite}>
             <input
-              type="email"
-              value={inviteEmail}
-              placeholder="초대할 사용자 이메일 (가입된 계정)"
-              onChange={(e) => setInviteEmail(e.target.value)}
+              value={inviteUsername}
+              placeholder="초대할 사용자 아이디 (가입된 계정)"
+              onChange={(e) => setInviteUsername(e.target.value)}
             />
-            <button type="submit" disabled={!inviteEmail.trim()}>
+            <button type="submit" disabled={!inviteUsername.trim()}>
               초대
             </button>
           </form>
@@ -88,7 +87,7 @@ export default function MembersPanel({ slug, onClose }: Props) {
               <li key={m.id}>
                 <span className="member-info">
                   <span className="member-name">{m.name}</span>
-                  <span className="member-email">{m.email}</span>
+                  <span className="member-email">@{m.username}</span>
                 </span>
                 <span className="member-actions">
                   <span className={m.role === 'owner' ? 'role owner' : 'role member'}>

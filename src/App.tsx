@@ -58,7 +58,7 @@ export default function App() {
   }
 
   // 3) 방 입장 → 실시간 협업 보드
-  const awarenessUser: AwarenessUser = { name: user.name, color: colorFor(user.email) }
+  const awarenessUser: AwarenessUser = { name: user.name, color: colorFor(user.username) }
   return (
     <Board
       room={room.slug}

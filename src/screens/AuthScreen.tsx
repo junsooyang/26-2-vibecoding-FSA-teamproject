@@ -7,7 +7,7 @@ interface Props {
 
 export default function AuthScreen({ onAuthenticated }: Props) {
   const [mode, setMode] = useState<'login' | 'register'>('login')
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -20,8 +20,8 @@ export default function AuthScreen({ onAuthenticated }: Props) {
     try {
       const res =
         mode === 'login'
-          ? await api.login(email.trim(), password)
-          : await api.register(email.trim(), name.trim(), password)
+          ? await api.login(username.trim(), password)
+          : await api.register(username.trim(), name.trim(), password)
       setToken(res.token)
       onAuthenticated(res.user)
     } catch (err) {
@@ -35,7 +35,6 @@ export default function AuthScreen({ onAuthenticated }: Props) {
     <div className="lobby">
       <div className="lobby-card">
         <h1>실시간 협업 보드</h1>
-        <p className="subtitle">26-2 바이브코딩 FSA 팀플</p>
 
         <div className="tabs">
           <button
@@ -56,12 +55,12 @@ export default function AuthScreen({ onAuthenticated }: Props) {
 
         <form onSubmit={submit}>
           <label>
-            이메일
+            아이디
             <input
-              type="email"
-              value={email}
-              placeholder="you@example.com"
-              onChange={(e) => setEmail(e.target.value)}
+              value={username}
+              placeholder="영문/숫자/밑줄 3~20자"
+              autoComplete="username"
+              onChange={(e) => setUsername(e.target.value)}
               required
             />
           </label>
@@ -84,6 +83,7 @@ export default function AuthScreen({ onAuthenticated }: Props) {
               type="password"
               value={password}
               placeholder="6자 이상"
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               onChange={(e) => setPassword(e.target.value)}
               required
             />

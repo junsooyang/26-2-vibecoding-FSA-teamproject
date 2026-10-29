@@ -8,7 +8,7 @@ const TOKEN_KEY = 'fsa_token'
 
 export interface User {
   id: number
-  email: string
+  username: string
   name: string
 }
 
@@ -24,7 +24,7 @@ export interface Room {
 
 export interface Member {
   id: number
-  email: string
+  username: string
   name: string
   role: 'owner' | 'member'
   joined_at: number
@@ -66,10 +66,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 export const api = {
   // 인증
-  register: (email: string, name: string, password: string) =>
-    request<{ token: string; user: User }>('POST', '/auth/register', { email, name, password }),
-  login: (email: string, password: string) =>
-    request<{ token: string; user: User }>('POST', '/auth/login', { email, password }),
+  register: (username: string, name: string, password: string) =>
+    request<{ token: string; user: User }>('POST', '/auth/register', { username, name, password }),
+  login: (username: string, password: string) =>
+    request<{ token: string; user: User }>('POST', '/auth/login', { username, password }),
   me: () => request<{ user: User }>('GET', '/auth/me'),
 
   // 방
@@ -77,8 +77,8 @@ export const api = {
   createRoom: (name: string) => request<{ room: Room }>('POST', '/rooms', { name }),
   getRoom: (slug: string) =>
     request<{ room: Room; role: 'owner' | 'member'; members: Member[] }>('GET', `/rooms/${slug}`),
-  inviteMember: (slug: string, email: string) =>
-    request<{ members: Member[] }>('POST', `/rooms/${slug}/members`, { email }),
+  inviteMember: (slug: string, username: string) =>
+    request<{ members: Member[] }>('POST', `/rooms/${slug}/members`, { username }),
   removeMember: (slug: string, userId: number) =>
     request<{ members: Member[] }>('DELETE', `/rooms/${slug}/members/${userId}`),
   deleteRoom: (slug: string) => request<{ ok: true }>('DELETE', `/rooms/${slug}`),

@@ -26,7 +26,7 @@ const insertMember = db.prepare(
 const findMember = db.prepare('SELECT * FROM room_members WHERE room_id = ? AND user_id = ?')
 const deleteMember = db.prepare('DELETE FROM room_members WHERE room_id = ? AND user_id = ?')
 const deleteRoom = db.prepare('DELETE FROM rooms WHERE id = ?')
-const findUserByEmail = db.prepare('SELECT id, email, name FROM users WHERE email = ?')
+const findUserByUsername = db.prepare('SELECT id, username, name FROM users WHERE username = ?')
 
 // 내가 속한 방 목록 (역할 포함)
 const listMyRooms = db.prepare(`
@@ -40,7 +40,7 @@ const listMyRooms = db.prepare(`
 
 // 방의 멤버 목록
 const listMembers = db.prepare(`
-  SELECT u.id, u.email, u.name, m.role, m.joined_at
+  SELECT u.id, u.username, u.name, m.role, m.joined_at
   FROM room_members m
   JOIN users u ON u.id = m.user_id
   WHERE m.room_id = ?
@@ -98,17 +98,17 @@ router.get('/:slug', loadRoomMembership, (req, res) => {
   })
 })
 
-// 멤버 초대 (owner 만) — 이메일로 기존 사용자를 member 로 추가
+// 멤버 초대 (owner 만) — 아이디로 기존 사용자를 member 로 추가
 router.post('/:slug/members', loadRoomMembership, (req, res) => {
   if (req.membership.role !== 'owner') {
     return res.status(403).json({ error: '팀장(owner)만 초대할 수 있습니다.' })
   }
-  const { email } = req.body ?? {}
-  if (!email) return res.status(400).json({ error: '초대할 사용자의 이메일을 입력하세요.' })
+  const { username } = req.body ?? {}
+  if (!username) return res.status(400).json({ error: '초대할 사용자의 아이디를 입력하세요.' })
 
-  const invitee = findUserByEmail.get(email)
+  const invitee = findUserByUsername.get(username)
   if (!invitee) {
-    return res.status(404).json({ error: '해당 이메일의 가입된 사용자를 찾을 수 없습니다.' })
+    return res.status(404).json({ error: '해당 아이디의 가입된 사용자를 찾을 수 없습니다.' })
   }
   if (findMember.get(req.room.id, invitee.id)) {
     return res.status(409).json({ error: '이미 방에 속한 사용자입니다.' })

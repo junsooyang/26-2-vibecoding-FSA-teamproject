@@ -52,7 +52,7 @@ export default function RoomListScreen({ user, onEnterRoom, onLogout }: Props) {
         <div className="card-head">
           <div>
             <h1>내 보드</h1>
-            <p className="subtitle">{user.name}님 ({user.email})</p>
+            <p className="subtitle">{user.name}님 (@{user.username})</p>
           </div>
           <button type="button" className="ghost" onClick={onLogout}>
             로그아웃
