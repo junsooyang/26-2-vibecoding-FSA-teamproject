@@ -1,0 +1,30 @@
+{
+  "name": "fsa-collab-board",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "26-2 바이브코딩 FSA 팀플 - 실시간 협업 보드 (브레인스토밍 / 마인드맵 / WBS)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "server": "node server/index.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.3.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "y-websocket": "^2.0.4",
+    "yjs": "^13.6.20",
+    "zustand": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "ws": "^8.18.0"
+  }
+}

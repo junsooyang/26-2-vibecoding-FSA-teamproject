@@ -1,0 +1,137 @@
+:root {
+  font-family: system-ui, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  color: #1f2937;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+/* ---------- 로비 ---------- */
+.lobby {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  padding: 16px;
+}
+
+.lobby-card {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+}
+
+.lobby-card h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+
+.lobby-card .subtitle {
+  margin: 0 0 24px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.lobby-card label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #374151;
+}
+
+.lobby-card input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.lobby-card button {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lobby-card button:disabled {
+  background: #c7d2fe;
+  cursor: not-allowed;
+}
+
+.lobby-card .tip {
+  margin: 20px 0 0;
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.5;
+}
+
+/* ---------- 보드 툴바 ---------- */
+.toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.95);
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.toolbar .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.toolbar .dot.online { background: #22c55e; }
+.toolbar .dot.offline { background: #ef4444; }
+
+.toolbar .peers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar .peer-chip {
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.toolbar .hint {
+  color: #9ca3af;
+  margin-left: auto;
+}
+
+.toolbar button {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
