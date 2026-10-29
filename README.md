@@ -9,6 +9,7 @@
 |------|-----------|
 | 프론트엔드 | React 18 + TypeScript + Vite |
 | 캔버스 / 노드 UI | [React Flow (`@xyflow/react`)](https://reactflow.dev) |
+| 자동 레이아웃 | [Dagre (`@dagrejs/dagre`)](https://github.com/dagrejs/dagre) |
 | 실시간 동기화 | [Yjs](https://docs.yjs.dev) (CRDT) + `y-websocket` |
 | 실시간 서버 | Node.js + `ws` + `y-websocket` 유틸 |
 | 방/권한 관리 API | Node.js + Express + JWT(`jsonwebtoken`) + `bcryptjs` |
@@ -39,7 +40,8 @@
     ├── api/
     │   └── client.ts       # REST API 호출 + JWT 토큰 관리
     ├── nodes/
-    │   └── WbsNode.tsx          # WBS 커스텀 노드 (상태색/진행률바)
+    │   ├── WbsNode.tsx          # WBS 커스텀 노드 (상태색/진행률바)
+    │   └── LiveCursors.tsx      # 다른 참여자 실시간 커서 오버레이
     ├── screens/
     │   ├── AuthScreen.tsx       # 로그인 / 회원가입
     │   ├── RoomListScreen.tsx   # 내 보드 목록 / 방 생성
@@ -47,6 +49,7 @@
     │   └── WbsEditPanel.tsx     # WBS 작업 편집 패널
     └── collab/
         ├── yjs.ts          # Yjs 문서 / 방 연결 레이어
+        ├── layout.ts       # Dagre 자동 레이아웃(트리 정렬) 유틸
         └── useCollabBoard.ts  # React Flow <-> Yjs 브릿지 훅
 ```
 
@@ -144,12 +147,22 @@ WBS 노드는 상태에 따라 테두리/배지 색이 바뀌고(회색→파랑
 | 노드 이동 | 노드를 **드래그** |
 | 트리 연결 | 노드 가장자리의 **점(handle)끼리 드래그** |
 | 노드/엣지 삭제 | 선택 후 `Delete` 키 |
+| 자동 정렬(마인드맵) | 툴바의 **자동 정렬 ↔**(좌→우) / **↕**(위→아래) 버튼 |
+
+### 실시간 커서
+
+다른 참여자의 마우스 위치가 **이름표가 달린 커서**로 캔버스 위에 실시간 표시됩니다.
+각자 줌/팬 상태가 달라도 올바른 위치에 보이도록, 커서 좌표는 화면 좌표가 아닌 **캔버스(flow) 좌표**로 공유됩니다. (Yjs `awareness` 활용 — 영속화되지 않는 임시 상태)
+
+### 자동 레이아웃(마인드맵 정렬)
+
+노드 연결 관계를 따라 **트리 모양으로 자동 정렬**합니다. 정렬 결과(각 노드 위치)는 Yjs로 전파되어 **모든 참여자 화면에 동시에 반영**됩니다.
 
 ## 다음 단계 아이디어
 
 - [x] 보드 영속화 (SQLite — 서버 재시작해도 보드 유지)
 - [x] 방/권한 관리 백엔드 (Express + JWT — 회원가입/로그인/초대/권한)
 - [x] WBS 전용 노드 타입 (작업명/담당자/상태/진행률)
-- [ ] 마인드맵 자동 레이아웃
-- [ ] 실시간 커서/선택 영역 표시 (Yjs awareness 확장)
+- [x] 마인드맵 자동 레이아웃 (Dagre 트리 정렬, 좌우/상하)
+- [x] 실시간 커서 표시 (Yjs awareness)
 - [ ] 배포 (프론트: Vercel · 웹소켓 서버: Railway/Render/Fly.io)

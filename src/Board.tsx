@@ -15,6 +15,7 @@ import { isWbsData, type BoardNode, type WbsNodeData } from './collab/yjs'
 import MembersPanel from './screens/MembersPanel'
 import WbsEditPanel from './screens/WbsEditPanel'
 import WbsNode from './nodes/WbsNode'
+import LiveCursors from './nodes/LiveCursors'
 
 interface BoardProps {
   /** 실시간 동기화용 방 식별자(slug) */
@@ -33,6 +34,7 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
     nodes,
     edges,
     peers,
+    cursors,
     connected,
     onNodesChange,
     onEdgesChange,
@@ -41,6 +43,8 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
     renameNode,
     addWbsNode,
     updateWbsNode,
+    setCursor,
+    applyLayout,
   } = useCollabBoard(room, user)
 
   const { screenToFlowPosition } = useReactFlow()
@@ -88,8 +92,24 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
     if (id) setEditingWbsId(id)
   }, [addWbsNode, screenToFlowPosition])
 
+  // 마우스 이동 -> 내 커서(flow 좌표) 브로드캐스트
+  const handleMouseMove = useCallback(
+    (event: React.MouseEvent) => {
+      const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      setCursor(pos)
+    },
+    [screenToFlowPosition, setCursor],
+  )
+
+  // 캔버스를 벗어나면 커서 제거
+  const handleMouseLeave = useCallback(() => setCursor(null), [setCursor])
+
   return (
-    <div style={{ width: '100vw', height: '100vh' }}>
+    <div
+      style={{ width: '100vw', height: '100vh' }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
       <div className="toolbar">
         <strong>{roomName}</strong>
         <span className={connected ? 'dot online' : 'dot offline'} />
@@ -106,6 +126,12 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
           빈 공간 더블클릭: 아이디어 노드 · 노드 더블클릭: 수정 · 점끼리 드래그: 연결
         </span>
         <button onClick={handleAddWbs}>+ WBS 작업</button>
+        <button onClick={() => applyLayout('LR')} title="좌→우 트리 정렬">
+          자동 정렬 ↔
+        </button>
+        <button onClick={() => applyLayout('TB')} title="위→아래 트리 정렬">
+          자동 정렬 ↕
+        </button>
         <button onClick={() => setShowMembers(true)}>멤버 관리</button>
         <button onClick={onLeave}>나가기</button>
       </div>
@@ -134,6 +160,7 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
         <Background />
         <Controls />
         <MiniMap pannable zoomable />
+        <LiveCursors cursors={cursors} />
       </ReactFlow>
     </div>
   )

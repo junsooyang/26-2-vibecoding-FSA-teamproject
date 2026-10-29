@@ -14,10 +14,20 @@ import {
   type CollabHandle,
   type WbsNodeData,
 } from './yjs'
+import { layoutNodes, type LayoutDirection } from './layout'
 
 export interface AwarenessUser {
   name: string
   color: string
+}
+
+/** 다른 참여자의 실시간 커서 (flow 좌표계) */
+export interface RemoteCursor {
+  clientId: number
+  name: string
+  color: string
+  x: number
+  y: number
 }
 
 /**
@@ -33,6 +43,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
   const [nodes, setNodes] = useState<BoardNode[]>([])
   const [edges, setEdges] = useState<BoardEdge[]>([])
   const [peers, setPeers] = useState<AwarenessUser[]>([])
+  const [cursors, setCursors] = useState<RemoteCursor[]>([])
   const [connected, setConnected] = useState(false)
 
   // 방 연결 + Yjs 관찰자 등록
@@ -53,17 +64,39 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       setConnected(e.status === 'connected')
     })
 
-    const syncPeers = () => {
-      const states = Array.from(handle.awareness.getStates().values())
-      setPeers(states.map((s) => (s as { user?: AwarenessUser }).user).filter(Boolean) as AwarenessUser[])
+    const myClientId = handle.awareness.clientID
+    const syncAwareness = () => {
+      const entries = Array.from(handle.awareness.getStates().entries())
+      // 접속자 목록(자기 포함)
+      setPeers(
+        entries
+          .map(([, s]) => (s as { user?: AwarenessUser }).user)
+          .filter(Boolean) as AwarenessUser[],
+      )
+      // 원격 커서 목록(자기 자신 제외, 커서 좌표가 있는 참여자만)
+      const remote: RemoteCursor[] = []
+      for (const [clientId, state] of entries) {
+        if (clientId === myClientId) continue
+        const s = state as { user?: AwarenessUser; cursor?: { x: number; y: number } }
+        if (s.user && s.cursor) {
+          remote.push({
+            clientId,
+            name: s.user.name,
+            color: s.user.color,
+            x: s.cursor.x,
+            y: s.cursor.y,
+          })
+        }
+      }
+      setCursors(remote)
     }
-    handle.awareness.on('change', syncPeers)
-    syncPeers()
+    handle.awareness.on('change', syncAwareness)
+    syncAwareness()
 
     return () => {
       handle.nodes.unobserve(syncNodes)
       handle.edges.unobserve(syncEdges)
-      handle.awareness.off('change', syncPeers)
+      handle.awareness.off('change', syncAwareness)
       handle.destroy()
       handleRef.current = null
     }
@@ -166,11 +199,31 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     })
   }, [])
 
+  /** 내 커서 위치(flow 좌표)를 awareness 로 브로드캐스트. null 이면 커서 제거(화면 이탈). */
+  const setCursor = useCallback((pos: { x: number; y: number } | null) => {
+    const handle = handleRef.current
+    if (!handle) return
+    handle.awareness.setLocalStateField('cursor', pos)
+  }, [])
+
+  /** 자동 레이아웃(마인드맵 정렬): dagre 로 위치 재계산 후 Yjs 에 반영 → 모두에게 동기화 */
+  const applyLayout = useCallback((direction: LayoutDirection = 'LR') => {
+    const handle = handleRef.current
+    if (!handle) return
+    const current = Array.from(handle.nodes.values())
+    const currentEdges = Array.from(handle.edges.values())
+    const laid = layoutNodes(current, currentEdges, direction)
+    handle.doc.transact(() => {
+      for (const n of laid) handle.nodes.set(n.id, n)
+    })
+  }, [])
+
   return useMemo(
     () => ({
       nodes,
       edges,
       peers,
+      cursors,
       connected,
       onNodesChange,
       onEdgesChange,
@@ -179,11 +232,14 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       renameNode,
       addWbsNode,
       updateWbsNode,
+      setCursor,
+      applyLayout,
     }),
     [
       nodes,
       edges,
       peers,
+      cursors,
       connected,
       onNodesChange,
       onEdgesChange,
@@ -192,6 +248,8 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       renameNode,
       addWbsNode,
       updateWbsNode,
+      setCursor,
+      applyLayout,
     ],
   )
 }
