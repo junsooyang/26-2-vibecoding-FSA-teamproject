@@ -32,6 +32,7 @@ import StickyNode from './nodes/StickyNode'
 import LiveCursors from './nodes/LiveCursors'
 import { CurrentUserContext } from './nodes/CurrentUserContext'
 import {
+  CHECKLIST_TOGGLE_EVENT,
   NODE_COMMENT_EVENT,
   NODE_VOTE_EVENT,
   PROMOTE_WBS_EVENT,
@@ -153,19 +154,25 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         if (promotedId) setEditingWbsId(promotedId)
       }
     }
+    const onChecklistToggle = (e: Event) => {
+      const { id, itemId } = (e as CustomEvent<{ id: string; itemId: string }>).detail ?? {}
+      if (id && itemId) toggleChecklistItem(id, itemId)
+    }
     window.addEventListener(WBS_TOGGLE_DONE_EVENT, onToggleDone)
     window.addEventListener(NODE_VOTE_EVENT, onVote)
     window.addEventListener(STICKY_COLOR_EVENT, onStickyColor)
     window.addEventListener(NODE_COMMENT_EVENT, onComment)
     window.addEventListener(PROMOTE_WBS_EVENT, onPromote)
+    window.addEventListener(CHECKLIST_TOGGLE_EVENT, onChecklistToggle)
     return () => {
       window.removeEventListener(WBS_TOGGLE_DONE_EVENT, onToggleDone)
       window.removeEventListener(NODE_VOTE_EVENT, onVote)
       window.removeEventListener(STICKY_COLOR_EVENT, onStickyColor)
       window.removeEventListener(NODE_COMMENT_EVENT, onComment)
       window.removeEventListener(PROMOTE_WBS_EVENT, onPromote)
+      window.removeEventListener(CHECKLIST_TOGGLE_EVENT, onChecklistToggle)
     }
-  }, [toggleWbsDone, toggleVote, updateStickyNode, promoteToWbs, username])
+  }, [toggleWbsDone, toggleVote, updateStickyNode, promoteToWbs, toggleChecklistItem, username])
 
   const { screenToFlowPosition } = useReactFlow()
 

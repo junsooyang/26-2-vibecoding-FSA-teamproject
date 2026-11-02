@@ -1435,3 +1435,49 @@ button.danger:hover {
   border-color: #c7d2fe;
   cursor: not-allowed;
 }
+
+/* ---------- WBS 노드 카드 안 세부 체크항목 ---------- */
+.wbs-node-checklist {
+  margin: 6px 0 2px;
+}
+
+.wbs-node-checklist .wbs-checklist-count {
+  margin: 0 0 4px;
+}
+
+.wbs-check-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wbs-check-item label {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #374151;
+  line-height: 1.35;
+}
+
+.wbs-check-item input[type='checkbox'] {
+  margin-top: 1px;
+  width: 13px;
+  height: 13px;
+  accent-color: #059669;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.wbs-check-item span {
+  word-break: break-word;
+}
+
+.wbs-check-item.done span {
+  text-decoration: line-through;
+  color: #9ca3af;
+}

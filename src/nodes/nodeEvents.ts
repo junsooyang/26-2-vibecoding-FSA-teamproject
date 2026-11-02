@@ -17,3 +17,6 @@ export const NODE_COMMENT_EVENT = 'node-comment'
 
 /** 아이디어/스티커 노드를 WBS 작업으로 승격: detail = { id } */
 export const PROMOTE_WBS_EVENT = 'promote-wbs'
+
+/** WBS 세부 체크항목 완료 토글: detail = { id, itemId } */
+export const CHECKLIST_TOGGLE_EVENT = 'checklist-toggle'

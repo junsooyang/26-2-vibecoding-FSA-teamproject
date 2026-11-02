@@ -1,7 +1,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { Attachment, WbsStatus } from '../collab/yjs'
 import { useCurrentUsername } from './CurrentUserContext'
-import { WBS_TOGGLE_DONE_EVENT } from './nodeEvents'
+import { CHECKLIST_TOGGLE_EVENT, WBS_TOGGLE_DONE_EVENT } from './nodeEvents'
 import { dueBadge, dueState } from '../collab/wbsUtils'
 import VoteButton from './VoteButton'
 import CommentButton from './CommentButton'
@@ -28,7 +28,7 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
     status: WbsStatus
     progress: number
     due?: string
-    checklist?: { id: string; done: boolean }[]
+    checklist?: { id: string; text: string; done: boolean }[]
     attachments?: Attachment[]
     votes?: string[]
     comments?: { id: string }[]
@@ -47,6 +47,12 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
   const onToggle = (e: React.MouseEvent | React.ChangeEvent) => {
     e.stopPropagation()
     window.dispatchEvent(new CustomEvent(WBS_TOGGLE_DONE_EVENT, { detail: { id } }))
+  }
+
+  // 세부 체크항목 토글 (노드에서 바로 체크)
+  const onToggleItem = (e: React.MouseEvent | React.ChangeEvent, itemId: string) => {
+    e.stopPropagation()
+    window.dispatchEvent(new CustomEvent(CHECKLIST_TOGGLE_EVENT, { detail: { id, itemId } }))
   }
 
   return (
@@ -83,8 +89,29 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
       </div>
 
       {checklist.length > 0 && (
-        <div className="wbs-checklist-count" title={`세부 항목 ${checklistDone}/${checklist.length} 완료`}>
-          ✅ {checklistDone}/{checklist.length}
+        <div className="wbs-node-checklist">
+          <div className="wbs-checklist-count" title={`세부 항목 ${checklistDone}/${checklist.length} 완료`}>
+            ✅ 세부 항목 {checklistDone}/{checklist.length}
+          </div>
+          <ul className="wbs-check-items">
+            {checklist.map((item) => (
+              <li key={item.id} className={item.done ? 'wbs-check-item done' : 'wbs-check-item'}>
+                <label
+                  className="nodrag"
+                  onClick={(e) => onToggleItem(e, item.id)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={item.done}
+                    onChange={(e) => onToggleItem(e, item.id)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <span>{item.text}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
