@@ -6,6 +6,8 @@ import {
   MiniMap,
   ReactFlowProvider,
   useReactFlow,
+  getNodesBounds,
+  getViewportForBounds,
   type NodeMouseHandler,
   type NodeTypes,
   type OnNodeDrag,
@@ -28,6 +30,12 @@ import PersonalSpacePanel from './screens/PersonalSpacePanel'
 import DashboardPanel from './screens/DashboardPanel'
 import TextInputModal from './screens/TextInputModal'
 import PollPanel from './screens/PollPanel'
+import {
+  captureBoardPng,
+  downloadDataUrl,
+  exportFilename,
+  savePngAsPdf,
+} from './collab/exportBoard'
 import WbsNode from './nodes/WbsNode'
 import ImageNode from './nodes/ImageNode'
 import StickyNode from './nodes/StickyNode'
@@ -190,7 +198,9 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     }
   }, [toggleWbsDone, toggleVote, updateStickyNode, promoteToWbs, toggleChecklistItem, username])
 
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, getNodes } = useReactFlow()
+  // 내보내기 진행 중 표시
+  const [exporting, setExporting] = useState(false)
 
   // 커스텀 노드 타입 등록
   const nodeTypes = useMemo<NodeTypes>(
@@ -396,6 +406,57 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   // 보드가 완전히 비었는지(빈 보드 안내용)
   const isEmpty = nodes.length === 0
 
+  // --- 화면 캡처 / PDF 저장 ---
+  // 전체 노드가 담기는 이미지를 만든다. (뷰포트 밖 노드까지 포함)
+  const buildBoardImage = useCallback(async () => {
+    const viewport = document.querySelector('.react-flow__viewport') as HTMLElement | null
+    if (!viewport) return null
+    const allNodes = getNodes()
+    if (allNodes.length === 0) {
+      window.alert('보드에 노드가 없어요. 내용을 추가한 뒤 저장해보세요.')
+      return null
+    }
+    // 전체 노드 경계 → 이미지 크기 + 꽉 차는 변환 계산
+    const bounds = getNodesBounds(allNodes)
+    const padding = 0.1
+    const imgW = Math.min(4000, Math.max(640, Math.round(bounds.width * (1 + padding * 2))))
+    const imgH = Math.min(4000, Math.max(480, Math.round(bounds.height * (1 + padding * 2))))
+    const vp = getViewportForBounds(bounds, imgW, imgH, 0.3, 2, padding)
+    const dataUrl = await captureBoardPng({
+      viewport,
+      width: imgW,
+      height: imgH,
+      transform: { x: vp.x, y: vp.y, zoom: vp.zoom },
+    })
+    return { dataUrl, width: imgW, height: imgH }
+  }, [getNodes])
+
+  const handleExportImage = useCallback(async () => {
+    setExporting(true)
+    try {
+      const img = await buildBoardImage()
+      if (img) downloadDataUrl(img.dataUrl, exportFilename(roomName, 'png'))
+    } catch (err) {
+      console.error(err)
+      window.alert('이미지 저장에 실패했어요.')
+    } finally {
+      setExporting(false)
+    }
+  }, [buildBoardImage, roomName])
+
+  const handleExportPdf = useCallback(async () => {
+    setExporting(true)
+    try {
+      const img = await buildBoardImage()
+      if (img) savePngAsPdf(img.dataUrl, img.width, img.height, exportFilename(roomName, 'pdf'))
+    } catch (err) {
+      console.error(err)
+      window.alert('PDF 저장에 실패했어요.')
+    } finally {
+      setExporting(false)
+    }
+  }, [buildBoardImage, roomName])
+
   // 대시보드 집계용 WBS 작업 데이터 목록
   const wbsTasks = useMemo(
     () => nodes.filter((n) => isWbsData(n.data)).map((n) => n.data as WbsNodeData),
@@ -470,6 +531,12 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
                 {polls.some((p) => !p.closed && (p.deadline === 0 || Date.now() < p.deadline))
                   ? ' •'
                   : ''}
+              </button>
+              <button onClick={handleExportImage} disabled={exporting} title="보드 전체를 이미지(PNG)로 저장">
+                📷 이미지
+              </button>
+              <button onClick={handleExportPdf} disabled={exporting} title="보드 전체를 PDF로 저장">
+                📄 PDF
               </button>
               <button onClick={handleAddImageClick} title="사진을 노드로 추가">
                 + 사진
@@ -577,6 +644,12 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         <MiniMap pannable zoomable />
         <LiveCursors cursors={cursors} />
       </ReactFlow>
+
+      {exporting && (
+        <div className="export-overlay">
+          <div className="export-toast">저장할 이미지를 만드는 중...</div>
+        </div>
+      )}
 
       {isEmpty && (
         <div className="empty-guide">
