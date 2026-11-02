@@ -233,7 +233,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     if (!existing) return
     handle.nodes.set(id, {
       ...existing,
-      data: { ...existing.data, ...patch },
+      data: { ...existing.data, ...patch } as BoardNode['data'],
     })
   }, [])
 
@@ -319,7 +319,10 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     if (!handle) return
     const existing = handle.nodes.get(id)
     if (!existing) return
-    handle.nodes.set(id, { ...existing, data: { ...existing.data, ...patch } })
+    handle.nodes.set(id, {
+      ...existing,
+      data: { ...existing.data, ...patch } as BoardNode['data'],
+    })
   }, [])
 
   /**
