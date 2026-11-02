@@ -3,6 +3,7 @@ import type { Attachment, WbsStatus } from '../collab/yjs'
 import { useCurrentUsername } from './CurrentUserContext'
 import { WBS_TOGGLE_DONE_EVENT } from './nodeEvents'
 import VoteButton from './VoteButton'
+import CommentButton from './CommentButton'
 
 // 기존 import 경로 호환을 위해 재노출
 export { WBS_TOGGLE_DONE_EVENT }
@@ -27,6 +28,7 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
     progress: number
     attachments?: Attachment[]
     votes?: string[]
+    comments?: { id: string }[]
   }
   const me = useCurrentUsername()
   const status = WBS_STATUS[d.status] ?? WBS_STATUS.todo
@@ -75,6 +77,7 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
           </span>
         )}
         <VoteButton nodeId={id} votes={d.votes} voted={voted} />
+        <CommentButton nodeId={id} count={d.comments?.length ?? 0} />
       </div>
 
       <Handle type="source" position={Position.Bottom} />

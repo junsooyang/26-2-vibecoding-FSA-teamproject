@@ -11,3 +11,6 @@ export const NODE_VOTE_EVENT = 'node-vote'
 
 /** 스티커 메모 색상 변경: detail = { id, color } */
 export const STICKY_COLOR_EVENT = 'sticky-color'
+
+/** 노드 댓글 패널 열기: detail = { id } */
+export const NODE_COMMENT_EVENT = 'node-comment'

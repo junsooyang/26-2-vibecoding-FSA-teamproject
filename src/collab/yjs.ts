@@ -13,6 +13,20 @@ import type { Edge, Node } from '@xyflow/react'
 /** WBS 작업 상태 */
 export type WbsStatus = 'todo' | 'doing' | 'done'
 
+/** 노드 댓글(의견) — 모든 노드에 공통 적용 */
+export interface Comment {
+  /** 고유 id */
+  id: string
+  /** 작성자 표시 이름 */
+  author: string
+  /** 작성자 username (삭제 권한 판정용) */
+  authorUsername: string
+  /** 댓글 내용 */
+  text: string
+  /** 작성 시각(ms) */
+  at: number
+}
+
 /** 첨부(링크 또는 업로드 파일) */
 export interface Attachment {
   /** 고유 id */
@@ -32,6 +46,8 @@ export interface Attachment {
 /** 일반(브레인스토밍) 노드 데이터 */
 export interface PlainNodeData {
   label: string
+  /** 노드 댓글 목록 */
+  comments?: Comment[]
   // React Flow 의 Node<T> 제약(Record<string, unknown>) 충족용 인덱스 시그니처
   [key: string]: unknown
 }
@@ -52,6 +68,8 @@ export interface WbsNodeData {
   attachments?: Attachment[]
   /** 투표한 사용자 username 목록 (1인 1표) */
   votes?: string[]
+  /** 노드 댓글 목록 */
+  comments?: Comment[]
   /** 노드 타입 식별용 (data 로도 구분할 수 있게 둠) */
   kind: 'wbs'
   // React Flow 의 Node<T> 제약 충족용 인덱스 시그니처
@@ -66,6 +84,8 @@ export interface StickyNodeData {
   color: StickyColor
   /** 투표한 사용자 username 목록 (1인 1표) */
   votes?: string[]
+  /** 노드 댓글 목록 */
+  comments?: Comment[]
   /** 노드 타입 식별용 */
   kind: 'sticky'
   // React Flow 의 Node<T> 제약 충족용 인덱스 시그니처
@@ -80,6 +100,8 @@ export interface ImageNodeData {
   src: string
   /** 표시 너비(px). 높이는 비율 유지 */
   width: number
+  /** 노드 댓글 목록 */
+  comments?: Comment[]
   /** 노드 타입 식별용 */
   kind: 'image'
   // React Flow 의 Node<T> 제약 충족용 인덱스 시그니처

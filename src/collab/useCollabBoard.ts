@@ -14,6 +14,7 @@ import {
   type BoardEdge,
   type BoardNode,
   type CollabHandle,
+  type Comment,
   type ImageNodeData,
   type StickyColor,
   type StickyNodeData,
@@ -380,6 +381,44 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     handle.nodes.set(id, { ...existing, data: { ...existing.data, votes: next } })
   }, [])
 
+  /** 노드에 댓글(의견) 추가. 모든 노드 공통. */
+  const addComment = useCallback(
+    (id: string, comment: { author: string; authorUsername: string; text: string }) => {
+      const handle = handleRef.current
+      if (!handle) return
+      const existing = handle.nodes.get(id)
+      if (!existing) return
+      const data = existing.data as { comments?: Comment[] }
+      const list = data.comments ?? []
+      const newComment: Comment = {
+        id: `cmt-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        author: comment.author,
+        authorUsername: comment.authorUsername,
+        text: comment.text,
+        at: Date.now(),
+      }
+      handle.nodes.set(id, {
+        ...existing,
+        data: { ...existing.data, comments: [...list, newComment] },
+      })
+    },
+    [],
+  )
+
+  /** 노드 댓글 삭제 */
+  const deleteComment = useCallback((id: string, commentId: string) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing) return
+    const data = existing.data as { comments?: Comment[] }
+    const list = data.comments ?? []
+    handle.nodes.set(id, {
+      ...existing,
+      data: { ...existing.data, comments: list.filter((c) => c.id !== commentId) },
+    })
+  }, [])
+
   return useMemo(
     () => ({
       nodes,
@@ -406,6 +445,8 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       addStickyNode,
       updateStickyNode,
       toggleVote,
+      addComment,
+      deleteComment,
     }),
     [
       nodes,
@@ -432,6 +473,8 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       addStickyNode,
       updateStickyNode,
       toggleVote,
+      addComment,
+      deleteComment,
     ],
   )
 }

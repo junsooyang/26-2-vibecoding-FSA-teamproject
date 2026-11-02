@@ -12,15 +12,39 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useCollabBoard, type AwarenessUser } from './collab/useCollabBoard'
-import { isStickyData, isWbsData, type BoardNode, type StickyColor, type WbsNodeData } from './collab/yjs'
+import {
+  isImageData,
+  isStickyData,
+  isWbsData,
+  type BoardNode,
+  type Comment,
+  type StickyColor,
+  type WbsNodeData,
+} from './collab/yjs'
 import MembersPanel from './screens/MembersPanel'
 import WbsEditPanel from './screens/WbsEditPanel'
+import CommentsPanel from './screens/CommentsPanel'
+import PersonalSpacePanel from './screens/PersonalSpacePanel'
 import WbsNode from './nodes/WbsNode'
 import ImageNode from './nodes/ImageNode'
 import StickyNode from './nodes/StickyNode'
 import LiveCursors from './nodes/LiveCursors'
 import { CurrentUserContext } from './nodes/CurrentUserContext'
-import { NODE_VOTE_EVENT, STICKY_COLOR_EVENT, WBS_TOGGLE_DONE_EVENT } from './nodes/nodeEvents'
+import {
+  NODE_COMMENT_EVENT,
+  NODE_VOTE_EVENT,
+  STICKY_COLOR_EVENT,
+  WBS_TOGGLE_DONE_EVENT,
+} from './nodes/nodeEvents'
+
+/** 노드 데이터에서 패널 헤더에 쓸 짧은 제목을 뽑는다. */
+function nodeTitleOf(node: BoardNode): string {
+  const d = node.data
+  if (isWbsData(d)) return d.label || '(제목 없는 작업)'
+  if (isStickyData(d)) return d.text ? d.text.slice(0, 20) : '(빈 메모)'
+  if (isImageData(d)) return d.label || '(이미지)'
+  return String((d as { label?: string }).label ?? '(노드)')
+}
 
 /** 업로드 이미지 최대 크기(3MB). data URL 로 Yjs 에 저장되므로 과도한 용량 방지. */
 const MAX_IMAGE_SIZE = 3 * 1024 * 1024
@@ -56,6 +80,10 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [showMembers, setShowMembers] = useState(false)
   // 편집 중인 WBS 노드 id (null = 패널 닫힘)
   const [editingWbsId, setEditingWbsId] = useState<string | null>(null)
+  // 댓글 패널 대상 노드 id (null = 닫힘)
+  const [commentNodeId, setCommentNodeId] = useState<string | null>(null)
+  // 개인 공간 패널 열림 여부
+  const [showPersonal, setShowPersonal] = useState(false)
   const {
     nodes,
     edges,
@@ -80,6 +108,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     addStickyNode,
     updateStickyNode,
     toggleVote,
+    addComment,
+    deleteComment,
   } = useCollabBoard(room, user)
 
   // 드래그 중인 노드 위에 겹친 "드롭 대상" 노드 id (초록 하이라이트용)
@@ -101,13 +131,19 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       const { id, color } = (e as CustomEvent<{ id: string; color: StickyColor }>).detail ?? {}
       if (id && color) updateStickyNode(id, { color })
     }
+    const onComment = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id
+      if (id) setCommentNodeId(id)
+    }
     window.addEventListener(WBS_TOGGLE_DONE_EVENT, onToggleDone)
     window.addEventListener(NODE_VOTE_EVENT, onVote)
     window.addEventListener(STICKY_COLOR_EVENT, onStickyColor)
+    window.addEventListener(NODE_COMMENT_EVENT, onComment)
     return () => {
       window.removeEventListener(WBS_TOGGLE_DONE_EVENT, onToggleDone)
       window.removeEventListener(NODE_VOTE_EVENT, onVote)
       window.removeEventListener(STICKY_COLOR_EVENT, onStickyColor)
+      window.removeEventListener(NODE_COMMENT_EVENT, onComment)
     }
   }, [toggleWbsDone, toggleVote, updateStickyNode, username])
 
@@ -132,6 +168,13 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const editingNode = editingWbsId ? nodes.find((n) => n.id === editingWbsId) : undefined
   const editingData =
     editingNode && isWbsData(editingNode.data) ? (editingNode.data as WbsNodeData) : null
+
+  // 댓글 패널 대상 노드 (삭제되면 자동으로 닫힘)
+  const commentNode = commentNodeId ? nodes.find((n) => n.id === commentNodeId) : undefined
+  const commentList = (commentNode?.data as { comments?: Comment[] } | undefined)?.comments ?? []
+  useEffect(() => {
+    if (commentNodeId && !commentNode) setCommentNodeId(null)
+  }, [commentNodeId, commentNode])
 
   // 빈 캔버스 더블클릭 -> 새 일반 노드 추가 (빈 pane 에서만)
   const handlePaneDoubleClick = useCallback(
@@ -289,6 +332,9 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         <button onClick={handleAlignGrid} title="선택 노드(없으면 전체)를 격자로 줄맞춤">
           격자 정렬 ▦
         </button>
+        <button onClick={() => setShowPersonal(true)} title="나만 보는 노트장 / 파일 보관함">
+          🗂️ 개인 공간
+        </button>
         <button onClick={() => setShowMembers(true)}>멤버 관리</button>
         <button onClick={onLeave}>나가기</button>
       </div>
@@ -302,6 +348,23 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       />
 
       {showMembers && <MembersPanel slug={room} onClose={() => setShowMembers(false)} />}
+
+      {showPersonal && (
+        <PersonalSpacePanel room={room} username={username} onClose={() => setShowPersonal(false)} />
+      )}
+
+      {commentNode && commentNodeId && (
+        <CommentsPanel
+          nodeTitle={nodeTitleOf(commentNode)}
+          comments={commentList}
+          currentUsername={username}
+          onAdd={(text) =>
+            addComment(commentNodeId, { author: user.name, authorUsername: username, text })
+          }
+          onDelete={(cid) => deleteComment(commentNodeId, cid)}
+          onClose={() => setCommentNodeId(null)}
+        />
+      )}
 
       {editingData && editingWbsId && (
         <WbsEditPanel

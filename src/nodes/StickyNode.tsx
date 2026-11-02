@@ -3,6 +3,7 @@ import type { StickyColor, StickyNodeData } from '../collab/yjs'
 import { useCurrentUsername } from './CurrentUserContext'
 import { STICKY_COLOR_EVENT } from './nodeEvents'
 import VoteButton from './VoteButton'
+import CommentButton from './CommentButton'
 
 /** 스티커 색상 팔레트 (배경 / 테두리) */
 export const STICKY_COLORS: Record<StickyColor, { bg: string; border: string }> = {
@@ -54,6 +55,7 @@ export default function StickyNode({ id, data, selected }: NodeProps) {
 
       <div className="sticky-foot">
         <VoteButton nodeId={id} votes={d.votes} voted={voted} />
+        <CommentButton nodeId={id} count={d.comments?.length ?? 0} />
       </div>
 
       <Handle type="source" position={Position.Bottom} />
