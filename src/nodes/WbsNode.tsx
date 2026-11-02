@@ -1,8 +1,9 @@
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { type NodeProps } from '@xyflow/react'
 import type { Attachment, WbsStatus } from '../collab/yjs'
 import { useCurrentUsername } from './CurrentUserContext'
 import { CHECKLIST_TOGGLE_EVENT, WBS_TOGGLE_DONE_EVENT } from './nodeEvents'
 import { dueBadge, dueState } from '../collab/wbsUtils'
+import NodeHandles from './NodeHandles'
 import VoteButton from './VoteButton'
 import CommentButton from './CommentButton'
 
@@ -57,7 +58,7 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
 
   return (
     <div className={selected ? 'wbs-node selected' : 'wbs-node'} style={{ borderColor: status.color }}>
-      <Handle type="target" position={Position.Top} />
+      <NodeHandles />
 
       <div className="wbs-head">
         <label className="wbs-check" onClick={onToggle} title={done ? '완료 해제' : '완료로 표시'}>
@@ -125,7 +126,6 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
         <CommentButton nodeId={id} count={d.comments?.length ?? 0} />
       </div>
 
-      <Handle type="source" position={Position.Bottom} />
     </div>
   )
 }

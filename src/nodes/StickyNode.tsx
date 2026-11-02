@@ -1,7 +1,8 @@
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { type NodeProps } from '@xyflow/react'
 import type { StickyColor, StickyNodeData } from '../collab/yjs'
 import { useCurrentUsername } from './CurrentUserContext'
 import { PROMOTE_WBS_EVENT, STICKY_COLOR_EVENT } from './nodeEvents'
+import NodeHandles from './NodeHandles'
 import VoteButton from './VoteButton'
 import CommentButton from './CommentButton'
 
@@ -42,7 +43,7 @@ export default function StickyNode({ id, data, selected }: NodeProps) {
       className={selected ? 'sticky-node selected' : 'sticky-node'}
       style={{ background: palette.bg, borderColor: palette.border }}
     >
-      <Handle type="target" position={Position.Top} />
+      <NodeHandles />
 
       <div className="sticky-colors">
         {COLOR_ORDER.map((c) => (
@@ -65,8 +66,6 @@ export default function StickyNode({ id, data, selected }: NodeProps) {
         <VoteButton nodeId={id} votes={d.votes} voted={voted} />
         <CommentButton nodeId={id} count={d.comments?.length ?? 0} />
       </div>
-
-      <Handle type="source" position={Position.Bottom} />
     </div>
   )
 }

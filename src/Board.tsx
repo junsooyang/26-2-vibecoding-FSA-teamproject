@@ -383,11 +383,11 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           >
             → 작업으로{promotableSelected.length > 1 ? ` (${promotableSelected.length})` : ''}
           </button>
-          <button onClick={() => applyLayout('LR')} title="좌→우 트리 정렬">
-            정렬 ↔
+          <button onClick={() => applyLayout('LR')} title="왼쪽에서 오른쪽으로 트리 정렬">
+            가로 정렬 →
           </button>
-          <button onClick={() => applyLayout('TB')} title="위→아래 트리 정렬">
-            정렬 ↕
+          <button onClick={() => applyLayout('TB')} title="위에서 아래로 트리 정렬">
+            세로 정렬 ↓
           </button>
         </span>
 
@@ -508,7 +508,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
                 <span className="flow-badge">②</span>
                 <div>
                   <strong>마인드맵으로 정리</strong>
-                  <p>노드의 점끼리 드래그해 연결하고, <b>정렬 ↔/↕</b>로 트리처럼 구조화해요.</p>
+                  <p>노드의 점끼리 드래그해 연결하고(상하좌우 어디든), <b>가로/세로 정렬</b>로 트리처럼 구조화해요.</p>
                 </div>
               </li>
               <li>

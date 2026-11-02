@@ -1,10 +1,11 @@
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { type NodeProps } from '@xyflow/react'
 import type { ImageNodeData } from '../collab/yjs'
+import NodeHandles from './NodeHandles'
 
 /**
  * 이미지(사진) 커스텀 노드.
  * 업로드한 사진(data URL) 또는 외부 이미지 URL 을 캔버스에 표시한다.
- * 상/하 핸들로 다른 노드와 트리 연결이 가능하다.
+ * 상/하/좌/우 핸들로 어느 방향으로든 다른 노드와 연결할 수 있다.
  */
 export default function ImageNode({ data, selected }: NodeProps) {
   const d = data as ImageNodeData
@@ -12,7 +13,7 @@ export default function ImageNode({ data, selected }: NodeProps) {
 
   return (
     <div className={selected ? 'image-node selected' : 'image-node'} style={{ width }}>
-      <Handle type="target" position={Position.Top} />
+      <NodeHandles />
 
       {d.src ? (
         <img src={d.src} alt={d.label || '이미지'} className="image-node-img" draggable={false} />
@@ -21,8 +22,6 @@ export default function ImageNode({ data, selected }: NodeProps) {
       )}
 
       {d.label && <div className="image-node-caption">{d.label}</div>}
-
-      <Handle type="source" position={Position.Bottom} />
     </div>
   )
 }

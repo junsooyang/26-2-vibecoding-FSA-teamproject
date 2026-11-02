@@ -1481,3 +1481,30 @@ button.danger:hover {
   text-decoration: line-through;
   color: #9ca3af;
 }
+
+/* ---------- 노드 공용 4방향 연결 핸들 ---------- */
+.node-handle {
+  width: 9px;
+  height: 9px;
+  background: #6366f1;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  opacity: 0.55;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+/* 노드에 마우스를 올리거나 선택했을 때 핸들을 더 잘 보이게 */
+.wbs-node:hover .node-handle,
+.sticky-node:hover .node-handle,
+.image-node:hover .node-handle,
+.wbs-node.selected .node-handle,
+.sticky-node.selected .node-handle,
+.image-node.selected .node-handle {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+/* source/target 핸들이 같은 지점에 겹치므로, 연결 시작 판정이 쉽도록 살짝 키움 */
+.react-flow__handle.node-handle {
+  z-index: 1;
+}
