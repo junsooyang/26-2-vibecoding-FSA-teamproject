@@ -53,7 +53,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
   const [edges, setEdges] = useState<BoardEdge[]>([])
   const [peers, setPeers] = useState<AwarenessUser[]>([])
   const [cursors, setCursors] = useState<RemoteCursor[]>([])
-  const [poll, setPoll] = useState<Poll | null>(null)
+  const [polls, setPolls] = useState<Poll[]>([])
   const [connected, setConnected] = useState(false)
 
   // 방 연결 + Yjs 관찰자 등록
@@ -63,7 +63,8 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
 
     const syncNodes = () => setNodes(Array.from(handle.nodes.values()))
     const syncEdges = () => setEdges(Array.from(handle.edges.values()))
-    const syncPoll = () => setPoll((handle.poll.get('current') as Poll | null) ?? null)
+    const syncPoll = () =>
+      setPolls(Array.from(handle.poll.values()).sort((a, b) => b.createdAt - a.createdAt))
 
     handle.nodes.observe(syncNodes)
     handle.edges.observe(syncEdges)
@@ -117,6 +118,28 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     // user 는 최초 연결 시에만 사용. roomName 변경 시에만 재연결.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomName])
+
+  // 마감 시각이 지난 투표를 자동 종료 (1초마다 점검).
+  // deadline 이 지난 열린 투표가 하나라도 있으면 closed=true 로 기록한다.
+  useEffect(() => {
+    const hasPending = polls.some((p) => !p.closed && p.deadline > 0)
+    if (!hasPending) return
+    const tick = () => {
+      const handle = handleRef.current
+      if (!handle) return
+      const now = Date.now()
+      handle.doc.transact(() => {
+        for (const p of handle.poll.values()) {
+          if (!p.closed && p.deadline > 0 && now >= p.deadline) {
+            handle.poll.set(p.id, { ...p, closed: true })
+          }
+        }
+      })
+    }
+    tick() // 즉시 1회
+    const timer = setInterval(tick, 1000)
+    return () => clearInterval(timer)
+  }, [polls])
 
   // --- 로컬 조작 -> Yjs 반영 ---
 
@@ -526,59 +549,63 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     return id
   }, [])
 
-  // --- 투표 세션 ---
+  // --- 투표 세션 (여러 개 동시 진행) ---
 
-  /** 새 투표 생성 (질문 + 선택지들). 기존 투표는 덮어쓴다. */
-  const createPoll = useCallback((question: string, optionTexts: string[], owner: string) => {
-    const handle = handleRef.current
-    if (!handle) return
-    const options: PollOption[] = optionTexts
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((t, i) => ({ id: `opt-${Date.now()}-${i}`, text: t, voters: [] }))
-    if (options.length < 2) return // 선택지 최소 2개
-    const newPoll: Poll = {
-      id: `poll-${Date.now()}`,
-      question: question.trim() || '(제목 없는 투표)',
-      options,
-      owner,
-      closed: false,
-      createdAt: Date.now(),
-    }
-    handle.poll.set('current', newPoll)
-  }, [])
+  /** 새 투표 생성 (질문 + 선택지들 + 선택적 마감 시각). 여러 개를 동시에 만들 수 있다. */
+  const createPoll = useCallback(
+    (question: string, optionTexts: string[], owner: string, deadline = 0) => {
+      const handle = handleRef.current
+      if (!handle) return
+      const options: PollOption[] = optionTexts
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .map((t, i) => ({ id: `opt-${Date.now()}-${i}`, text: t, voters: [] }))
+      if (options.length < 2) return // 선택지 최소 2개
+      const id = `poll-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+      const newPoll: Poll = {
+        id,
+        question: question.trim() || '(제목 없는 투표)',
+        options,
+        owner,
+        closed: false,
+        deadline: deadline > 0 ? deadline : 0,
+        createdAt: Date.now(),
+      }
+      handle.poll.set(id, newPoll)
+    },
+    [],
+  )
 
-  /** 투표하기: 한 선택지에만 1표(이미 그 선택지면 취소, 다른 선택지면 이동). 종료된 투표는 무시. */
-  const votePoll = useCallback((optionId: string, username: string) => {
+  /** 특정 투표에 투표: 한 선택지에만 1표(다시 누르면 취소). 종료/마감된 투표는 무시. */
+  const votePoll = useCallback((pollId: string, optionId: string, username: string) => {
     const handle = handleRef.current
     if (!handle || !username) return
-    const current = handle.poll.get('current') as Poll | null
-    if (!current || current.closed) return
-    const options = current.options.map((opt) => {
-      // 모든 선택지에서 내 표를 먼저 제거
+    const target = handle.poll.get(pollId)
+    if (!target || target.closed) return
+    if (target.deadline > 0 && Date.now() >= target.deadline) return // 마감 지남
+    const options = target.options.map((opt) => {
       const voters = opt.voters.filter((u) => u !== username)
-      // 누른 선택지에는, 기존에 안 눌렀던 경우에만 추가(= 다시 누르면 취소 효과)
       const wasVoted = opt.voters.includes(username)
       if (opt.id === optionId && !wasVoted) voters.push(username)
       return { ...opt, voters }
     })
-    handle.poll.set('current', { ...current, options })
+    handle.poll.set(pollId, { ...target, options })
   }, [])
 
-  /** 투표 종료 (만든 사람만 — 권한은 호출부에서 확인) */
-  const closePoll = useCallback(() => {
+  /** 특정 투표 종료 (만든 사람만 — 권한은 호출부에서 확인) */
+  const closePoll = useCallback((pollId: string) => {
     const handle = handleRef.current
     if (!handle) return
-    const current = handle.poll.get('current') as Poll | null
-    if (!current) return
-    handle.poll.set('current', { ...current, closed: true })
+    const target = handle.poll.get(pollId)
+    if (!target) return
+    handle.poll.set(pollId, { ...target, closed: true })
   }, [])
 
-  /** 투표 삭제(치우기) */
-  const clearPoll = useCallback(() => {
+  /** 특정 투표 삭제 */
+  const clearPoll = useCallback((pollId: string) => {
     const handle = handleRef.current
     if (!handle) return
-    handle.poll.set('current', null)
+    handle.poll.delete(pollId)
   }, [])
 
   return useMemo(
@@ -614,7 +641,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       toggleChecklistItem,
       removeChecklistItem,
       promoteToWbs,
-      poll,
+      polls,
       createPoll,
       votePoll,
       closePoll,
@@ -652,7 +679,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       toggleChecklistItem,
       removeChecklistItem,
       promoteToWbs,
-      poll,
+      polls,
       createPoll,
       votePoll,
       closePoll,

@@ -133,7 +133,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     toggleChecklistItem,
     removeChecklistItem,
     promoteToWbs,
-    poll,
+    polls,
     createPoll,
     votePoll,
     closePoll,
@@ -466,7 +466,10 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
                 📊 대시보드
               </button>
               <button onClick={() => setShowPoll(true)} title="질문/선택지로 팀 투표 진행">
-                🗳️ 투표{poll && !poll.closed ? ' •' : ''}
+                🗳️ 투표
+                {polls.some((p) => !p.closed && (p.deadline === 0 || Date.now() < p.deadline))
+                  ? ' •'
+                  : ''}
               </button>
               <button onClick={handleAddImageClick} title="사진을 노드로 추가">
                 + 사진
@@ -517,12 +520,12 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
 
       {showPoll && (
         <PollPanel
-          poll={poll}
+          polls={polls}
           username={username}
-          onCreate={(q, opts) => createPoll(q, opts, username)}
-          onVote={(optId) => votePoll(optId, username)}
-          onCloseVote={closePoll}
-          onClear={clearPoll}
+          onCreate={(q, opts, deadline) => createPoll(q, opts, username, deadline)}
+          onVote={(pollId, optId) => votePoll(pollId, optId, username)}
+          onCloseVote={(pollId) => closePoll(pollId)}
+          onClear={(pollId) => clearPoll(pollId)}
           onDismiss={() => setShowPoll(false)}
         />
       )}

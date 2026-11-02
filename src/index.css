@@ -1747,3 +1747,50 @@ button.danger:hover {
   gap: 8px;
   justify-content: flex-end;
 }
+
+/* ---------- 투표 목록 / 새 투표 토글 / 마감 표시 ---------- */
+.poll-new-toggle {
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed #c7cbd1;
+  border-radius: 8px;
+  background: #fbfbfd;
+  color: #4338ca;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+
+.poll-create {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fafafe;
+}
+
+.poll-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.poll-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.poll-deadline {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #b45309;
+  font-weight: 600;
+}
+
+.poll-deadline.expired {
+  color: #dc2626;
+}

@@ -150,16 +150,18 @@ export interface PollOption {
   voters: string[]
 }
 
-/** 방 전체 공유 투표 세션 (한 방에 하나의 활성 투표) */
+/** 방 전체 공유 투표 세션 (여러 개 동시 진행 가능) */
 export interface Poll {
   id: string
-  /** 투표 질문 */
+  /** 투표 질문(주제) */
   question: string
   options: PollOption[]
-  /** 만든 사람 username (닫기 권한) */
+  /** 만든 사람 username (닫기/삭제 권한) */
   owner: string
   /** 진행 중 / 종료됨 */
   closed: boolean
+  /** 자동 종료 마감 시각(ms). 0 이면 마감 없음 */
+  deadline: number
   createdAt: number
 }
 
@@ -168,8 +170,8 @@ export interface CollabHandle {
   provider: WebsocketProvider
   nodes: Y.Map<BoardNode>
   edges: Y.Map<BoardEdge>
-  /** 방 공유 투표 세션 (키 'current' 에 활성 투표 1개) */
-  poll: Y.Map<Poll | null>
+  /** 방 공유 투표 세션들 (키 = poll id, 여러 개 동시 진행 가능) */
+  poll: Y.Map<Poll>
   /** 현재 접속한 사용자 정보(커서/이름 공유용) */
   awareness: WebsocketProvider['awareness']
   destroy: () => void
@@ -187,7 +189,7 @@ export function connectRoom(roomName: string, user: { name: string; color: strin
 
   const nodes = doc.getMap<BoardNode>('nodes')
   const edges = doc.getMap<BoardEdge>('edges')
-  const poll = doc.getMap<Poll | null>('poll')
+  const poll = doc.getMap<Poll>('poll')
 
   provider.awareness.setLocalStateField('user', user)
 
