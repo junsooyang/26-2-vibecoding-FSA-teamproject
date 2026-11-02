@@ -419,6 +419,40 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     })
   }, [])
 
+  /**
+   * 아이디어/스티커 노드를 WBS 작업 노드로 "승격"한다.
+   * - id, position, 연결(엣지)은 그대로 유지 → 마인드맵에서 고른 아이디어를 바로 할 일로 전환.
+   * - 기존 라벨/메모 텍스트를 작업명으로 가져오고, 투표/댓글도 보존한다.
+   * - 이미 WBS 라면 아무 것도 하지 않는다.
+   * 반환: 승격된 노드 id (WBS 편집 패널을 바로 열기 위함)
+   */
+  const promoteToWbs = useCallback((id: string) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing) return
+    const data = existing.data as {
+      kind?: string
+      label?: string
+      text?: string
+      votes?: string[]
+      comments?: Comment[]
+    }
+    if (data.kind === 'wbs') return id // 이미 WBS
+    const label = (data.label ?? data.text ?? '').trim() || '새 작업'
+    const wbsData: WbsNodeData = {
+      label,
+      assignee: '',
+      status: 'todo',
+      progress: 0,
+      votes: data.votes ?? [],
+      comments: data.comments ?? [],
+      kind: 'wbs',
+    }
+    handle.nodes.set(id, { ...existing, type: 'wbs', data: wbsData })
+    return id
+  }, [])
+
   return useMemo(
     () => ({
       nodes,
@@ -447,6 +481,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       toggleVote,
       addComment,
       deleteComment,
+      promoteToWbs,
     }),
     [
       nodes,
@@ -475,6 +510,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       toggleVote,
       addComment,
       deleteComment,
+      promoteToWbs,
     ],
   )
 }

@@ -14,3 +14,6 @@ export const STICKY_COLOR_EVENT = 'sticky-color'
 
 /** 노드 댓글 패널 열기: detail = { id } */
 export const NODE_COMMENT_EVENT = 'node-comment'
+
+/** 아이디어/스티커 노드를 WBS 작업으로 승격: detail = { id } */
+export const PROMOTE_WBS_EVENT = 'promote-wbs'

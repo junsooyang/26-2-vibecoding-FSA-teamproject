@@ -33,6 +33,7 @@ import { CurrentUserContext } from './nodes/CurrentUserContext'
 import {
   NODE_COMMENT_EVENT,
   NODE_VOTE_EVENT,
+  PROMOTE_WBS_EVENT,
   STICKY_COLOR_EVENT,
   WBS_TOGGLE_DONE_EVENT,
 } from './nodes/nodeEvents'
@@ -84,6 +85,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [commentNodeId, setCommentNodeId] = useState<string | null>(null)
   // 개인 공간 패널 열림 여부
   const [showPersonal, setShowPersonal] = useState(false)
+  // 부가 기능(사진/정렬/개인공간 등) 더보기 펼침 여부
+  const [showMore, setShowMore] = useState(false)
   const {
     nodes,
     edges,
@@ -110,6 +113,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     toggleVote,
     addComment,
     deleteComment,
+    promoteToWbs,
   } = useCollabBoard(room, user)
 
   // 드래그 중인 노드 위에 겹친 "드롭 대상" 노드 id (초록 하이라이트용)
@@ -135,17 +139,26 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       const id = (e as CustomEvent<{ id: string }>).detail?.id
       if (id) setCommentNodeId(id)
     }
+    const onPromote = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id
+      if (id) {
+        const promotedId = promoteToWbs(id)
+        if (promotedId) setEditingWbsId(promotedId)
+      }
+    }
     window.addEventListener(WBS_TOGGLE_DONE_EVENT, onToggleDone)
     window.addEventListener(NODE_VOTE_EVENT, onVote)
     window.addEventListener(STICKY_COLOR_EVENT, onStickyColor)
     window.addEventListener(NODE_COMMENT_EVENT, onComment)
+    window.addEventListener(PROMOTE_WBS_EVENT, onPromote)
     return () => {
       window.removeEventListener(WBS_TOGGLE_DONE_EVENT, onToggleDone)
       window.removeEventListener(NODE_VOTE_EVENT, onVote)
       window.removeEventListener(STICKY_COLOR_EVENT, onStickyColor)
       window.removeEventListener(NODE_COMMENT_EVENT, onComment)
+      window.removeEventListener(PROMOTE_WBS_EVENT, onPromote)
     }
-  }, [toggleWbsDone, toggleVote, updateStickyNode, username])
+  }, [toggleWbsDone, toggleVote, updateStickyNode, promoteToWbs, username])
 
   const { screenToFlowPosition } = useReactFlow()
 
@@ -294,6 +307,23 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     alignGrid(selected.length > 0 ? selected : undefined)
   }, [nodes, alignGrid])
 
+  // --- 아이디어 → WBS 승격 (선택된 비-WBS 노드들) ---
+  const promotableSelected = useMemo(
+    () => nodes.filter((n) => n.selected && !isWbsData(n.data) && !isImageData(n.data)),
+    [nodes],
+  )
+
+  const handlePromoteSelected = useCallback(() => {
+    const ids = promotableSelected.map((n) => n.id)
+    let lastId: string | undefined
+    for (const id of ids) lastId = promoteToWbs(id) ?? lastId
+    // 한 개만 승격했으면 편집 패널을 바로 연다
+    if (ids.length === 1 && lastId) setEditingWbsId(lastId)
+  }, [promotableSelected, promoteToWbs])
+
+  // 보드가 완전히 비었는지(빈 보드 안내용)
+  const isEmpty = nodes.length === 0
+
   return (
     <CurrentUserContext.Provider value={username}>
     <div
@@ -302,41 +332,75 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       onMouseLeave={handleMouseLeave}
     >
       <div className="toolbar">
-        <strong>{roomName}</strong>
+        <strong className="room-title">{roomName}</strong>
         <span className={connected ? 'dot online' : 'dot offline'} />
-        <span>{connected ? '실시간 연결됨' : '연결 시도 중...'}</span>
         <span className="peers">
-          접속 {peers.length}명
+          접속 {peers.length}
           {peers.map((p, i) => (
             <span key={i} className="peer-chip" style={{ background: p.color }}>
               {p.name}
             </span>
           ))}
         </span>
-        <span className="hint">
-          더블클릭: 아이디어 · 노드를 다른 노드 위로 드래그: 합치기 · 점끼리 드래그: 연결
+
+        {/* ① 아이디어 — 브레인스토밍 */}
+        <span className="tool-group" data-step="1">
+          <span className="tool-step">① 아이디어</span>
+          <button onClick={handleAddSticky} title="브레인스토밍용 메모(포스트잇) 추가">
+            + 메모
+          </button>
+          <span className="tool-tip-inline">빈 곳 더블클릭으로도 추가</span>
         </span>
-        <button onClick={handleAddWbs}>+ WBS 작업</button>
-        <button onClick={handleAddSticky} title="스티커 메모(포스트잇) 추가">
-          + 메모
+
+        {/* ② 정리 — 마인드맵 */}
+        <span className="tool-group" data-step="2">
+          <span className="tool-step">② 정리</span>
+          <button
+            onClick={handlePromoteSelected}
+            disabled={promotableSelected.length === 0}
+            className="primary"
+            title="선택한 아이디어/메모를 WBS 작업으로 전환"
+          >
+            → 작업으로{promotableSelected.length > 1 ? ` (${promotableSelected.length})` : ''}
+          </button>
+          <button onClick={() => applyLayout('LR')} title="좌→우 트리 정렬">
+            정렬 ↔
+          </button>
+          <button onClick={() => applyLayout('TB')} title="위→아래 트리 정렬">
+            정렬 ↕
+          </button>
+        </span>
+
+        {/* ③ 작업 — WBS */}
+        <span className="tool-group" data-step="3">
+          <span className="tool-step">③ 작업</span>
+          <button onClick={handleAddWbs}>+ WBS 작업</button>
+        </span>
+
+        {/* 더보기 — 부가 기능 */}
+        <span className="tool-group more-group">
+          <button className="ghost-toggle" onClick={() => setShowMore((v) => !v)}>
+            {showMore ? '더보기 ▴' : '더보기 ▾'}
+          </button>
+          {showMore && (
+            <span className="more-items">
+              <button onClick={handleAddImageClick} title="사진을 노드로 추가">
+                + 사진
+              </button>
+              <button onClick={handleAlignGrid} title="선택 노드(없으면 전체)를 격자로 줄맞춤">
+                격자 정렬 ▦
+              </button>
+              <button onClick={() => setShowPersonal(true)} title="나만 보는 노트장 / 파일 보관함">
+                🗂️ 개인 공간
+              </button>
+              <button onClick={() => setShowMembers(true)}>멤버 관리</button>
+            </span>
+          )}
+        </span>
+
+        <button className="leave-btn" onClick={onLeave}>
+          나가기
         </button>
-        <button onClick={handleAddImageClick} title="사진을 노드로 추가">
-          + 사진
-        </button>
-        <button onClick={() => applyLayout('LR')} title="좌→우 트리 정렬">
-          자동 정렬 ↔
-        </button>
-        <button onClick={() => applyLayout('TB')} title="위→아래 트리 정렬">
-          자동 정렬 ↕
-        </button>
-        <button onClick={handleAlignGrid} title="선택 노드(없으면 전체)를 격자로 줄맞춤">
-          격자 정렬 ▦
-        </button>
-        <button onClick={() => setShowPersonal(true)} title="나만 보는 노트장 / 파일 보관함">
-          🗂️ 개인 공간
-        </button>
-        <button onClick={() => setShowMembers(true)}>멤버 관리</button>
-        <button onClick={onLeave}>나가기</button>
       </div>
 
       <input
@@ -396,6 +460,37 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         <MiniMap pannable zoomable />
         <LiveCursors cursors={cursors} />
       </ReactFlow>
+
+      {isEmpty && (
+        <div className="empty-guide">
+          <div className="empty-card">
+            <h2>이렇게 진행해요 👋</h2>
+            <ol className="flow-steps">
+              <li>
+                <span className="flow-badge">①</span>
+                <div>
+                  <strong>아이디어 모으기</strong>
+                  <p>빈 곳을 더블클릭하거나 <b>+ 메모</b>로 떠오르는 생각을 자유롭게 적어요.</p>
+                </div>
+              </li>
+              <li>
+                <span className="flow-badge">②</span>
+                <div>
+                  <strong>마인드맵으로 정리</strong>
+                  <p>노드의 점끼리 드래그해 연결하고, <b>정렬 ↔/↕</b>로 트리처럼 구조화해요.</p>
+                </div>
+              </li>
+              <li>
+                <span className="flow-badge">③</span>
+                <div>
+                  <strong>작업으로 전환</strong>
+                  <p>채택한 아이디어를 골라 <b>→ 작업으로</b> 버튼을 누르면 담당자·진행률이 있는 WBS 작업이 돼요.</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+        </div>
+      )}
     </div>
     </CurrentUserContext.Provider>
   )

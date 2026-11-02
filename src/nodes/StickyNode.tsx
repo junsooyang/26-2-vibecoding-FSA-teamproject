@@ -1,7 +1,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { StickyColor, StickyNodeData } from '../collab/yjs'
 import { useCurrentUsername } from './CurrentUserContext'
-import { STICKY_COLOR_EVENT } from './nodeEvents'
+import { PROMOTE_WBS_EVENT, STICKY_COLOR_EVENT } from './nodeEvents'
 import VoteButton from './VoteButton'
 import CommentButton from './CommentButton'
 
@@ -32,6 +32,11 @@ export default function StickyNode({ id, data, selected }: NodeProps) {
     window.dispatchEvent(new CustomEvent(STICKY_COLOR_EVENT, { detail: { id, color } }))
   }
 
+  const promote = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    window.dispatchEvent(new CustomEvent(PROMOTE_WBS_EVENT, { detail: { id } }))
+  }
+
   return (
     <div
       className={selected ? 'sticky-node selected' : 'sticky-node'}
@@ -54,6 +59,9 @@ export default function StickyNode({ id, data, selected }: NodeProps) {
       <div className="sticky-text">{d.text || '(빈 메모 — 더블클릭해서 입력)'}</div>
 
       <div className="sticky-foot">
+        <button type="button" className="promote-btn" onClick={promote} title="이 메모를 WBS 작업으로 전환">
+          → 작업
+        </button>
         <VoteButton nodeId={id} votes={d.votes} voted={voted} />
         <CommentButton nodeId={id} count={d.comments?.length ?? 0} />
       </div>

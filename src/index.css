@@ -962,3 +962,162 @@ button.danger:hover {
 .personal-file-add input[type='file'] {
   font-size: 12px;
 }
+
+/* ---------- 툴바 3단계 그룹화 ---------- */
+.toolbar .room-title {
+  margin-right: 2px;
+}
+
+.tool-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid #eef0f3;
+  border-radius: 10px;
+  background: #fbfbfd;
+}
+
+.tool-group[data-step='1'] { border-color: #fde68a; background: #fffbeb; }
+.tool-group[data-step='2'] { border-color: #bfdbfe; background: #eff6ff; }
+.tool-group[data-step='3'] { border-color: #bbf7d0; background: #f0fdf4; }
+
+.tool-step {
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.tool-tip-inline {
+  font-size: 11px;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+.toolbar button.primary {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #fff;
+  font-weight: 700;
+}
+
+.toolbar button.primary:disabled {
+  background: #e5e7eb;
+  border-color: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.more-group {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin-left: auto;
+}
+
+.ghost-toggle {
+  background: #fff;
+  border: 1px dashed #c7cbd1 !important;
+  color: #6b7280;
+}
+
+.more-items {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.leave-btn {
+  border-color: #fca5a5 !important;
+  color: #dc2626 !important;
+}
+
+/* ---------- 승격(→작업) 버튼 (노드 내부) ---------- */
+.promote-btn {
+  border: 1px solid #a5b4fc;
+  background: #eef2ff;
+  color: #4338ca;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.promote-btn:hover {
+  background: #e0e7ff;
+}
+
+/* ---------- 빈 보드 흐름 안내 ---------- */
+.empty-guide {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.empty-card {
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 28px 32px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  max-width: 460px;
+}
+
+.empty-card h2 {
+  margin: 0 0 18px;
+  font-size: 20px;
+}
+
+.flow-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.flow-steps li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.flow-badge {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #6366f1;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.flow-steps strong {
+  display: block;
+  font-size: 15px;
+  color: #1f2937;
+  margin-bottom: 2px;
+}
+
+.flow-steps p {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.flow-steps b {
+  color: #4338ca;
+}
