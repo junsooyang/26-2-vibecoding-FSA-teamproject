@@ -528,7 +528,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
               </button>
               <button onClick={() => setShowPoll(true)} title="질문/선택지로 팀 투표 진행">
                 🗳️ 투표
-                {polls.some((p) => !p.closed && (p.deadline === 0 || Date.now() < p.deadline))
+                {polls.some((p) => p && !p.closed && (p.deadline === 0 || Date.now() < p.deadline))
                   ? ' •'
                   : ''}
               </button>

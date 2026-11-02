@@ -64,7 +64,13 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     const syncNodes = () => setNodes(Array.from(handle.nodes.values()))
     const syncEdges = () => setEdges(Array.from(handle.edges.values()))
     const syncPoll = () =>
-      setPolls(Array.from(handle.poll.values()).sort((a, b) => b.createdAt - a.createdAt))
+      setPolls(
+        Array.from(handle.poll.values())
+          // 옛 구조/깨진 데이터 방어: 필수 필드가 있는 것만
+          .filter((p): p is Poll => !!p && Array.isArray((p as Poll).options) && typeof (p as Poll).id === 'string')
+          .map((p) => ({ ...p, deadline: typeof p.deadline === 'number' ? p.deadline : 0 }))
+          .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
+      )
 
     handle.nodes.observe(syncNodes)
     handle.edges.observe(syncEdges)
@@ -122,7 +128,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
   // 마감 시각이 지난 투표를 자동 종료 (1초마다 점검).
   // deadline 이 지난 열린 투표가 하나라도 있으면 closed=true 로 기록한다.
   useEffect(() => {
-    const hasPending = polls.some((p) => !p.closed && p.deadline > 0)
+    const hasPending = polls.some((p) => p && !p.closed && p.deadline > 0)
     if (!hasPending) return
     const tick = () => {
       const handle = handleRef.current
@@ -130,7 +136,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       const now = Date.now()
       handle.doc.transact(() => {
         for (const p of handle.poll.values()) {
-          if (!p.closed && p.deadline > 0 && now >= p.deadline) {
+          if (p && !p.closed && p.deadline > 0 && now >= p.deadline) {
             handle.poll.set(p.id, { ...p, closed: true })
           }
         }
