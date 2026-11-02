@@ -1,42 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { api, type PersonalFile, type PersonalSpace } from '../api/client'
 
 interface Props {
   /** 방 slug (방별로 개인 공간 분리) */
   room: string
-  /** 현재 사용자 username (사용자별 개인 공간 분리) */
+  /** 현재 사용자 username (헤더 표시용. 실제 식별은 서버에서 JWT 로 처리) */
   username: string
   onClose: () => void
 }
 
-/** 개인 보관 파일 (data URL 로 localStorage 에 저장) */
-interface PersonalFile {
-  id: string
-  name: string
-  url: string
-  size: number
-}
-
-interface PersonalData {
-  note: string
-  files: PersonalFile[]
-}
-
-/** 개인 파일 최대 크기(2MB). localStorage 용량 보호. */
+/** 개인 파일 최대 크기(2MB). */
 const MAX_FILE_SIZE = 2 * 1024 * 1024
-
-function storageKey(room: string, username: string) {
-  return `fsa_personal:${username}:${room}`
-}
-
-function loadData(room: string, username: string): PersonalData {
-  try {
-    const raw = localStorage.getItem(storageKey(room, username))
-    if (raw) return JSON.parse(raw) as PersonalData
-  } catch {
-    // 손상된 데이터는 무시
-  }
-  return { note: '', files: [] }
-}
+/** 저장 디바운스(ms) */
+const SAVE_DEBOUNCE = 800
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
@@ -44,27 +20,62 @@ function formatSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+
 /**
  * 팀원별 개인 공간 패널.
- * - 개인 노트장(자유 메모)
- * - 개인 파일 보관함
- * 이 데이터는 공유되지 않고, 브라우저 localStorage 에 사용자+방별로 저장된다.
+ * - 개인 노트장(자유 메모) + 개인 파일 보관함
+ * - 데이터는 **서버(SQLite)** 에 사용자+방별로 저장된다. (JWT 로 본인 식별)
+ *   → 어느 기기/브라우저에서 로그인해도 동일하게 보인다. 공유는 되지 않음.
  */
 export default function PersonalSpacePanel({ room, username, onClose }: Props) {
-  const [data, setData] = useState<PersonalData>(() => loadData(room, username))
+  const [data, setData] = useState<PersonalSpace>({ note: '', files: [] })
+  const [loading, setLoading] = useState(true)
   const [fileError, setFileError] = useState('')
-  const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [saveState, setSaveState] = useState<SaveState>('idle')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // 최초 로드 완료 전에는 저장하지 않기 위한 플래그
+  const loadedRef = useRef(false)
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 변경 시 localStorage 에 저장
+  // 서버에서 내 개인 공간 로드
   useEffect(() => {
-    try {
-      localStorage.setItem(storageKey(room, username), JSON.stringify(data))
-      setSavedAt(Date.now())
-    } catch {
-      setFileError('저장 공간이 가득 찼습니다. 파일을 줄여주세요.')
+    let alive = true
+    setLoading(true)
+    api
+      .getPersonal(room)
+      .then((res) => {
+        if (!alive) return
+        setData({ note: res.note ?? '', files: res.files ?? [] })
+      })
+      .catch(() => {
+        if (alive) setFileError('개인 공간을 불러오지 못했습니다.')
+      })
+      .finally(() => {
+        if (!alive) return
+        setLoading(false)
+        loadedRef.current = true
+      })
+    return () => {
+      alive = false
     }
-  }, [data, room, username])
+  }, [room])
+
+  // 변경 시 디바운스하여 서버에 저장
+  useEffect(() => {
+    if (!loadedRef.current) return
+    setSaveState('saving')
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => {
+      api
+        .savePersonal(room, data)
+        .then(() => setSaveState('saved'))
+        .catch(() => setSaveState('error'))
+    }, SAVE_DEBOUNCE)
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+    }
+  }, [data, room])
 
   const onPickFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setFileError('')
@@ -77,18 +88,13 @@ export default function PersonalSpacePanel({ room, username, onClose }: Props) {
     }
     const reader = new FileReader()
     reader.onload = () => {
-      setData((prev) => ({
-        ...prev,
-        files: [
-          ...prev.files,
-          {
-            id: `pf-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-            name: file.name,
-            url: String(reader.result),
-            size: file.size,
-          },
-        ],
-      }))
+      const newFile: PersonalFile = {
+        id: `pf-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        name: file.name,
+        url: String(reader.result),
+        size: file.size,
+      }
+      setData((prev) => ({ ...prev, files: [...prev.files, newFile] }))
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
     reader.onerror = () => setFileError('파일을 읽지 못했습니다.')
@@ -97,6 +103,13 @@ export default function PersonalSpacePanel({ room, username, onClose }: Props) {
 
   const removeFile = (id: string) =>
     setData((prev) => ({ ...prev, files: prev.files.filter((f) => f.id !== id) }))
+
+  const saveLabel: Record<SaveState, string> = {
+    idle: '',
+    saving: '저장 중...',
+    saved: '저장됨 · 모든 기기에서 동기화',
+    error: '저장 실패 — 네트워크를 확인하세요',
+  }
 
   return (
     <aside className="side-panel personal-panel" onClick={(e) => e.stopPropagation()}>
@@ -110,46 +123,54 @@ export default function PersonalSpacePanel({ room, username, onClose }: Props) {
         </button>
       </div>
 
-      <div className="personal-body">
-        <div className="field-label">📝 개인 노트장</div>
-        <textarea
-          className="personal-note"
-          value={data.note}
-          placeholder="나만 보는 메모를 자유롭게 적어보세요."
-          onChange={(e) => setData((prev) => ({ ...prev, note: e.target.value }))}
-        />
-
-        <div className="field-label">📎 개인 파일 보관함</div>
-        <div className="personal-file-add">
-          <input ref={fileInputRef} type="file" onChange={onPickFile} />
-          <span className="attach-hint">최대 {formatSize(MAX_FILE_SIZE)}</span>
+      {loading ? (
+        <div className="personal-body">
+          <p className="tip">불러오는 중...</p>
         </div>
-        {fileError && <p className="error">{fileError}</p>}
+      ) : (
+        <div className="personal-body">
+          <div className="field-label">📝 개인 노트장</div>
+          <textarea
+            className="personal-note"
+            value={data.note}
+            placeholder="나만 보는 메모를 자유롭게 적어보세요."
+            onChange={(e) => setData((prev) => ({ ...prev, note: e.target.value }))}
+          />
 
-        {data.files.length > 0 && (
-          <ul className="attach-list">
-            {data.files.map((f) => (
-              <li key={f.id} className="attach-item">
-                <a
-                  href={f.url}
-                  download={f.name}
-                  className="attach-link"
-                  title={`${f.name} (${formatSize(f.size)})`}
-                >
-                  <span className="attach-icon">📄</span>
-                  <span className="attach-name">{f.name}</span>
-                  <span className="attach-size">{formatSize(f.size)}</span>
-                </a>
-                <button type="button" className="danger" onClick={() => removeFile(f.id)}>
-                  삭제
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+          <div className="field-label">📎 개인 파일 보관함</div>
+          <div className="personal-file-add">
+            <input ref={fileInputRef} type="file" onChange={onPickFile} />
+            <span className="attach-hint">최대 {formatSize(MAX_FILE_SIZE)}</span>
+          </div>
+          {fileError && <p className="error">{fileError}</p>}
 
-        {savedAt && <p className="tip">자동 저장됨 · 이 브라우저에만 보관됩니다.</p>}
-      </div>
+          {data.files.length > 0 && (
+            <ul className="attach-list">
+              {data.files.map((f) => (
+                <li key={f.id} className="attach-item">
+                  <a
+                    href={f.url}
+                    download={f.name}
+                    className="attach-link"
+                    title={`${f.name} (${formatSize(f.size)})`}
+                  >
+                    <span className="attach-icon">📄</span>
+                    <span className="attach-name">{f.name}</span>
+                    <span className="attach-size">{formatSize(f.size)}</span>
+                  </a>
+                  <button type="button" className="danger" onClick={() => removeFile(f.id)}>
+                    삭제
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {saveState !== 'idle' && (
+            <p className={saveState === 'error' ? 'error' : 'tip'}>{saveLabel[saveState]}</p>
+          )}
+        </div>
+      )}
     </aside>
   )
 }

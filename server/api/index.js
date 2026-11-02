@@ -11,16 +11,19 @@ import express from 'express'
 import cors from 'cors'
 import authRouter from './auth.js'
 import roomsRouter from './rooms.js'
+import personalRouter from './personal.js'
 
 const port = Number(process.env.API_PORT) || 3001
 
 const app = express()
 app.use(cors())
-app.use(express.json())
+// 개인 공간 파일(data URL)이 커질 수 있으므로 바디 크기 제한을 넉넉히 둔다.
+app.use(express.json({ limit: '20mb' }))
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
 app.use('/api/auth', authRouter)
 app.use('/api/rooms', roomsRouter)
+app.use('/api/personal', personalRouter)
 
 // JSON 파싱 오류 등 공통 에러 핸들러
 app.use((err, _req, res, _next) => {

@@ -30,6 +30,19 @@ export interface Member {
   joined_at: number
 }
 
+/** 개인 공간 파일 (data URL 로 서버에 저장) */
+export interface PersonalFile {
+  id: string
+  name: string
+  url: string
+  size: number
+}
+
+export interface PersonalSpace {
+  note: string
+  files: PersonalFile[]
+}
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
 }
@@ -82,4 +95,10 @@ export const api = {
   removeMember: (slug: string, userId: number) =>
     request<{ members: Member[] }>('DELETE', `/rooms/${slug}/members/${userId}`),
   deleteRoom: (slug: string) => request<{ ok: true }>('DELETE', `/rooms/${slug}`),
+
+  // 개인 공간 (서버 저장 — 어느 기기에서든 동일하게 보임)
+  getPersonal: (slug: string) =>
+    request<PersonalSpace>('GET', `/personal/${slug}`),
+  savePersonal: (slug: string, data: PersonalSpace) =>
+    request<{ ok: true }>('PUT', `/personal/${slug}`, data),
 }

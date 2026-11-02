@@ -45,6 +45,19 @@ db.exec(`
     FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
+
+  -- 팀원별 개인 공간: 사용자 + 방(slug) 단위로 개인 노트/파일을 서버에 저장.
+  -- note: 개인 메모 텍스트, files_json: 개인 파일 목록(JSON, data URL 포함).
+  -- 어느 기기에서 로그인해도 동일하게 보이도록 서버에 보관한다.
+  CREATE TABLE IF NOT EXISTS personal_spaces (
+    user_id    INTEGER NOT NULL,
+    room_slug  TEXT NOT NULL,
+    note       TEXT NOT NULL DEFAULT '',
+    files_json TEXT NOT NULL DEFAULT '[]',
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, room_slug),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
 `)
 
 export default db
