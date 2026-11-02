@@ -28,6 +28,7 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
     status: WbsStatus
     progress: number
     due?: string
+    checklist?: { id: string; done: boolean }[]
     attachments?: Attachment[]
     votes?: string[]
     comments?: { id: string }[]
@@ -37,6 +38,8 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
   const progress = Math.max(0, Math.min(100, Number(d.progress) || 0))
   const done = d.status === 'done'
   const dstate = dueState(d.due, done)
+  const checklist = d.checklist ?? []
+  const checklistDone = checklist.filter((c) => c.done).length
   const attachmentCount = d.attachments?.length ?? 0
   const voted = !!me && (d.votes?.includes(me) ?? false)
 
@@ -78,6 +81,12 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
           style={{ width: `${progress}%`, background: status.color }}
         />
       </div>
+
+      {checklist.length > 0 && (
+        <div className="wbs-checklist-count" title={`세부 항목 ${checklistDone}/${checklist.length} 완료`}>
+          ✅ {checklistDone}/{checklist.length}
+        </div>
+      )}
 
       <div className="wbs-foot">
         {attachmentCount > 0 && (

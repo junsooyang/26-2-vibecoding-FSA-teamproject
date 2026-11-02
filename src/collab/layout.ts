@@ -3,9 +3,9 @@ import type { BoardEdge, BoardNode } from './yjs'
 
 export type LayoutDirection = 'TB' | 'LR'
 
-// 노드 크기(레이아웃 간격 계산용). 실제 렌더 크기와 대략 맞춘 값.
-const NODE_W = 200
-const NODE_H = 80
+// 실측 크기(node.measured)가 없을 때 쓰는 기본값.
+const DEFAULT_W = 200
+const DEFAULT_H = 100
 
 /**
  * Dagre 로 노드/엣지를 트리(계층) 형태로 자동 정렬한다.
@@ -24,14 +24,17 @@ export function layoutNodes(
   g.setDefaultEdgeLabel(() => ({}))
   g.setGraph({
     rankdir: direction,
-    nodesep: 40, // 같은 계층 내 노드 간격
-    ranksep: 90, // 계층(레벨) 간 간격
+    nodesep: 55, // 같은 계층 내 노드 간격
+    ranksep: 110, // 계층(레벨) 간 간격
     marginx: 20,
     marginy: 20,
   })
 
   for (const node of nodes) {
-    g.setNode(node.id, { width: NODE_W, height: NODE_H })
+    // 실제 렌더된 크기를 쓰면 높이가 제각각인 노드(스티커/WBS)도 겹치지 않는다.
+    const width = node.measured?.width ?? DEFAULT_W
+    const height = node.measured?.height ?? DEFAULT_H
+    g.setNode(node.id, { width, height })
   }
   for (const edge of edges) {
     // 연결된 노드가 모두 존재할 때만 엣지 반영
@@ -45,10 +48,12 @@ export function layoutNodes(
   return nodes.map((node) => {
     const pos = g.node(node.id)
     if (!pos) return node
-    // Dagre 는 노드 중심 좌표를 주므로 좌상단 기준으로 변환
+    // Dagre 는 노드 중심 좌표를 주므로, 각 노드 실측 크기로 좌상단 기준 변환
+    const width = node.measured?.width ?? DEFAULT_W
+    const height = node.measured?.height ?? DEFAULT_H
     return {
       ...node,
-      position: { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 },
+      position: { x: pos.x - width / 2, y: pos.y - height / 2 },
     }
   })
 }

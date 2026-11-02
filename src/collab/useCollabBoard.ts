@@ -13,6 +13,7 @@ import {
   type Attachment,
   type BoardEdge,
   type BoardNode,
+  type ChecklistItem,
   type CollabHandle,
   type Comment,
   type ImageNodeData,
@@ -419,6 +420,70 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     })
   }, [])
 
+  /** 노드 댓글 수정 (본인 댓글만 — 권한 체크는 호출부에서) */
+  const editComment = useCallback((id: string, commentId: string, text: string) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing) return
+    const data = existing.data as { comments?: Comment[] }
+    const list = data.comments ?? []
+    handle.nodes.set(id, {
+      ...existing,
+      data: {
+        ...existing.data,
+        comments: list.map((c) => (c.id === commentId ? { ...c, text } : c)),
+      },
+    })
+  }, [])
+
+  /** WBS 세부 체크항목 추가 */
+  const addChecklistItem = useCallback((id: string, text: string) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing || !isWbsData(existing.data)) return
+    const list = existing.data.checklist ?? []
+    const item: ChecklistItem = {
+      id: `chk-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      text,
+      done: false,
+    }
+    handle.nodes.set(id, {
+      ...existing,
+      data: { ...existing.data, checklist: [...list, item] },
+    })
+  }, [])
+
+  /** WBS 세부 체크항목 완료 토글 */
+  const toggleChecklistItem = useCallback((id: string, itemId: string) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing || !isWbsData(existing.data)) return
+    const list = existing.data.checklist ?? []
+    handle.nodes.set(id, {
+      ...existing,
+      data: {
+        ...existing.data,
+        checklist: list.map((c) => (c.id === itemId ? { ...c, done: !c.done } : c)),
+      },
+    })
+  }, [])
+
+  /** WBS 세부 체크항목 삭제 */
+  const removeChecklistItem = useCallback((id: string, itemId: string) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing || !isWbsData(existing.data)) return
+    const list = existing.data.checklist ?? []
+    handle.nodes.set(id, {
+      ...existing,
+      data: { ...existing.data, checklist: list.filter((c) => c.id !== itemId) },
+    })
+  }, [])
+
   /**
    * 아이디어/스티커 노드를 WBS 작업 노드로 "승격"한다.
    * - id, position, 연결(엣지)은 그대로 유지 → 마인드맵에서 고른 아이디어를 바로 할 일로 전환.
@@ -481,6 +546,10 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       toggleVote,
       addComment,
       deleteComment,
+      editComment,
+      addChecklistItem,
+      toggleChecklistItem,
+      removeChecklistItem,
       promoteToWbs,
     }),
     [
@@ -510,6 +579,10 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       toggleVote,
       addComment,
       deleteComment,
+      editComment,
+      addChecklistItem,
+      toggleChecklistItem,
+      removeChecklistItem,
       promoteToWbs,
     ],
   )

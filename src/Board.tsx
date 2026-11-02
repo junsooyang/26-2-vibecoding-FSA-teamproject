@@ -116,6 +116,10 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     toggleVote,
     addComment,
     deleteComment,
+    editComment,
+    addChecklistItem,
+    toggleChecklistItem,
+    removeChecklistItem,
     promoteToWbs,
   } = useCollabBoard(room, user)
 
@@ -441,6 +445,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           onAdd={(text) =>
             addComment(commentNodeId, { author: user.name, authorUsername: username, text })
           }
+          onEdit={(cid, text) => editComment(commentNodeId, cid, text)}
           onDelete={(cid) => deleteComment(commentNodeId, cid)}
           onClose={() => setCommentNodeId(null)}
         />
@@ -452,6 +457,9 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           onSave={(patch) => updateWbsNode(editingWbsId, patch)}
           onAddAttachment={(a) => addAttachment(editingWbsId, a)}
           onRemoveAttachment={(aid) => removeAttachment(editingWbsId, aid)}
+          onAddChecklistItem={(t) => addChecklistItem(editingWbsId, t)}
+          onToggleChecklistItem={(iid) => toggleChecklistItem(editingWbsId, iid)}
+          onRemoveChecklistItem={(iid) => removeChecklistItem(editingWbsId, iid)}
           onClose={() => setEditingWbsId(null)}
         />
       )}

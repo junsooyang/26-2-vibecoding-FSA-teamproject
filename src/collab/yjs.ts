@@ -55,6 +55,16 @@ export interface PlainNodeData {
 /** 스티커 메모 색상 */
 export type StickyColor = 'yellow' | 'pink' | 'blue' | 'green'
 
+/** WBS 세부 체크항목(서브태스크) */
+export interface ChecklistItem {
+  /** 고유 id */
+  id: string
+  /** 항목 내용 */
+  text: string
+  /** 완료 여부 */
+  done: boolean
+}
+
 /** WBS(작업 분해) 노드 데이터 */
 export interface WbsNodeData {
   label: string
@@ -66,6 +76,8 @@ export interface WbsNodeData {
   progress: number
   /** 마감일 (YYYY-MM-DD 문자열, 없으면 빈 문자열) */
   due?: string
+  /** 세부 체크항목(서브태스크) 목록 */
+  checklist?: ChecklistItem[]
   /** 저장용 첨부(링크/파일) 목록 */
   attachments?: Attachment[]
   /** 투표한 사용자 username 목록 (1인 1표) */

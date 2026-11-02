@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import type { Attachment, WbsNodeData, WbsStatus } from '../collab/yjs'
+import type { Attachment, ChecklistItem, WbsNodeData, WbsStatus } from '../collab/yjs'
 import { WBS_STATUS } from '../nodes/WbsNode'
 
 interface Props {
@@ -7,6 +7,9 @@ interface Props {
   onSave: (patch: Partial<WbsNodeData>) => void
   onAddAttachment: (attachment: Attachment) => void
   onRemoveAttachment: (attachmentId: string) => void
+  onAddChecklistItem: (text: string) => void
+  onToggleChecklistItem: (itemId: string) => void
+  onRemoveChecklistItem: (itemId: string) => void
   onClose: () => void
 }
 
@@ -32,6 +35,9 @@ export default function WbsEditPanel({
   onSave,
   onAddAttachment,
   onRemoveAttachment,
+  onAddChecklistItem,
+  onToggleChecklistItem,
+  onRemoveChecklistItem,
   onClose,
 }: Props) {
   const [label, setLabel] = useState(initial.label)
@@ -42,10 +48,20 @@ export default function WbsEditPanel({
   const [linkUrl, setLinkUrl] = useState('')
   const [linkName, setLinkName] = useState('')
   const [fileError, setFileError] = useState('')
+  const [newChecklistText, setNewChecklistText] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // 첨부는 Yjs(노드 data)에서 실시간으로 내려오므로 initial 에서 바로 읽는다.
+  // 첨부/체크리스트는 Yjs(노드 data)에서 실시간으로 내려오므로 initial 에서 바로 읽는다.
   const attachments = initial.attachments ?? []
+  const checklist: ChecklistItem[] = initial.checklist ?? []
+  const checklistDone = checklist.filter((c) => c.done).length
+
+  const addChecklist = () => {
+    const t = newChecklistText.trim()
+    if (!t) return
+    onAddChecklistItem(t)
+    setNewChecklistText('')
+  }
 
   const save = (e: React.FormEvent) => {
     e.preventDefault()
@@ -163,6 +179,56 @@ export default function WbsEditPanel({
 
           <button type="submit">저장</button>
         </form>
+
+        {/* ---------- 세부 체크항목(서브태스크) ---------- */}
+        <div className="attach-section">
+          <div className="field-label">
+            ✅ 세부 체크항목 {checklist.length > 0 && `(${checklistDone}/${checklist.length})`}
+          </div>
+
+          {checklist.length > 0 && (
+            <ul className="checklist">
+              {checklist.map((item) => (
+                <li key={item.id} className={item.done ? 'checklist-item done' : 'checklist-item'}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={item.done}
+                      onChange={() => onToggleChecklistItem(item.id)}
+                    />
+                    <span className="checklist-text">{item.text}</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="checklist-del"
+                    onClick={() => onRemoveChecklistItem(item.id)}
+                    title="삭제"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="checklist-add">
+            <input
+              type="text"
+              value={newChecklistText}
+              placeholder="세부 항목 추가 (Enter)"
+              onChange={(e) => setNewChecklistText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addChecklist()
+                }
+              }}
+            />
+            <button type="button" className="ghost" onClick={addChecklist}>
+              추가
+            </button>
+          </div>
+        </div>
 
         {/* ---------- 첨부(링크/파일) ---------- */}
         <div className="attach-section">
