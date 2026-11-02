@@ -1484,16 +1484,18 @@ button.danger:hover {
 
 /* ---------- 노드 공용 4방향 연결 핸들 ---------- */
 .node-handle {
-  width: 9px;
-  height: 9px;
+  width: 14px;
+  height: 14px;
   background: #6366f1;
   border: 2px solid #fff;
   border-radius: 50%;
-  opacity: 0.55;
+  opacity: 0.65;
+  cursor: crosshair; /* 선 긋기 커서 */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
-/* 노드에 마우스를 올리거나 선택했을 때 핸들을 더 잘 보이게 */
+/* 노드에 마우스를 올리거나 선택했을 때 핸들을 더 크고 또렷하게 */
 .wbs-node:hover .node-handle,
 .sticky-node:hover .node-handle,
 .image-node:hover .node-handle,
@@ -1501,10 +1503,49 @@ button.danger:hover {
 .sticky-node.selected .node-handle,
 .image-node.selected .node-handle {
   opacity: 1;
-  transform: scale(1.15);
+  transform: scale(1.25);
 }
 
-/* source/target 핸들이 같은 지점에 겹치므로, 연결 시작 판정이 쉽도록 살짝 키움 */
+.node-handle:hover {
+  opacity: 1;
+  transform: scale(1.5);
+  background: #4338ca;
+}
+
 .react-flow__handle.node-handle {
-  z-index: 1;
+  z-index: 2;
+}
+
+/* ---------- 커서 가시성 (노드/캔버스/연결 중) ---------- */
+/* 캔버스 빈 공간: 이동 가능 손 모양 */
+.react-flow__pane {
+  cursor: grab;
+}
+.react-flow__pane.dragging {
+  cursor: grabbing;
+}
+/* 노드 본문: 이동 가능 표시 (버튼/입력/핸들은 각자 커서 유지) */
+.wbs-node,
+.sticky-node,
+.image-node {
+  cursor: grab;
+}
+.wbs-node:active,
+.sticky-node:active,
+.image-node:active {
+  cursor: grabbing;
+}
+/* 노드 안의 조작 요소는 기본 포인터/텍스트 커서로 되돌림 */
+.wbs-node button,
+.sticky-node button,
+.image-node button,
+.wbs-check-item label,
+.sticky-dot,
+.wbs-check {
+  cursor: pointer;
+}
+/* 연결선을 긋는 중에도 커서가 사라지지 않도록 */
+.react-flow__connection,
+.react-flow__connectionline {
+  cursor: crosshair;
 }
