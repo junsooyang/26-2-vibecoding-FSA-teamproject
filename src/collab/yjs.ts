@@ -64,6 +64,8 @@ export interface WbsNodeData {
   status: WbsStatus
   /** 진행률 0~100 */
   progress: number
+  /** 마감일 (YYYY-MM-DD 문자열, 없으면 빈 문자열) */
+  due?: string
   /** 저장용 첨부(링크/파일) 목록 */
   attachments?: Attachment[]
   /** 투표한 사용자 username 목록 (1인 1표) */

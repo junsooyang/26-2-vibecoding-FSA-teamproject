@@ -2,6 +2,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { Attachment, WbsStatus } from '../collab/yjs'
 import { useCurrentUsername } from './CurrentUserContext'
 import { WBS_TOGGLE_DONE_EVENT } from './nodeEvents'
+import { dueBadge, dueState } from '../collab/wbsUtils'
 import VoteButton from './VoteButton'
 import CommentButton from './CommentButton'
 
@@ -26,6 +27,7 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
     assignee: string
     status: WbsStatus
     progress: number
+    due?: string
     attachments?: Attachment[]
     votes?: string[]
     comments?: { id: string }[]
@@ -34,6 +36,7 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
   const status = WBS_STATUS[d.status] ?? WBS_STATUS.todo
   const progress = Math.max(0, Math.min(100, Number(d.progress) || 0))
   const done = d.status === 'done'
+  const dstate = dueState(d.due, done)
   const attachmentCount = d.attachments?.length ?? 0
   const voted = !!me && (d.votes?.includes(me) ?? false)
 
@@ -62,6 +65,12 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
         <span className="wbs-assignee">{d.assignee ? `👤 ${d.assignee}` : '담당자 미지정'}</span>
         <span className="wbs-percent">{progress}%</span>
       </div>
+
+      {d.due && (
+        <div className={`wbs-due ${dstate}`}>
+          📅 {dueBadge(d.due, done)}
+        </div>
+      )}
 
       <div className="wbs-progress">
         <div

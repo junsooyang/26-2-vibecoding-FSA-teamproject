@@ -38,6 +38,7 @@ export default function WbsEditPanel({
   const [assignee, setAssignee] = useState(initial.assignee)
   const [status, setStatus] = useState<WbsStatus>(initial.status)
   const [progress, setProgress] = useState(initial.progress)
+  const [due, setDue] = useState(initial.due ?? '')
   const [linkUrl, setLinkUrl] = useState('')
   const [linkName, setLinkName] = useState('')
   const [fileError, setFileError] = useState('')
@@ -48,7 +49,7 @@ export default function WbsEditPanel({
 
   const save = (e: React.FormEvent) => {
     e.preventDefault()
-    onSave({ label: label.trim() || '새 작업', assignee: assignee.trim(), status, progress })
+    onSave({ label: label.trim() || '새 작업', assignee: assignee.trim(), status, progress, due })
     onClose()
   }
 
@@ -122,6 +123,11 @@ export default function WbsEditPanel({
               placeholder="예: 김팀원"
               onChange={(e) => setAssignee(e.target.value)}
             />
+          </label>
+
+          <label>
+            마감일
+            <input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
           </label>
 
           <div className="field-label">상태</div>

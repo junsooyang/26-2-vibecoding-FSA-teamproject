@@ -25,6 +25,7 @@ import MembersPanel from './screens/MembersPanel'
 import WbsEditPanel from './screens/WbsEditPanel'
 import CommentsPanel from './screens/CommentsPanel'
 import PersonalSpacePanel from './screens/PersonalSpacePanel'
+import DashboardPanel from './screens/DashboardPanel'
 import WbsNode from './nodes/WbsNode'
 import ImageNode from './nodes/ImageNode'
 import StickyNode from './nodes/StickyNode'
@@ -85,6 +86,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [commentNodeId, setCommentNodeId] = useState<string | null>(null)
   // 개인 공간 패널 열림 여부
   const [showPersonal, setShowPersonal] = useState(false)
+  // 대시보드 패널 열림 여부
+  const [showDashboard, setShowDashboard] = useState(false)
   // 부가 기능(사진/정렬/개인공간 등) 더보기 펼침 여부
   const [showMore, setShowMore] = useState(false)
   const {
@@ -324,6 +327,12 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   // 보드가 완전히 비었는지(빈 보드 안내용)
   const isEmpty = nodes.length === 0
 
+  // 대시보드 집계용 WBS 작업 데이터 목록
+  const wbsTasks = useMemo(
+    () => nodes.filter((n) => isWbsData(n.data)).map((n) => n.data as WbsNodeData),
+    [nodes],
+  )
+
   return (
     <CurrentUserContext.Provider value={username}>
     <div
@@ -384,6 +393,9 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           </button>
           {showMore && (
             <span className="more-items">
+              <button onClick={() => setShowDashboard(true)} title="팀원별 현황 / 전체 진행률">
+                📊 대시보드
+              </button>
               <button onClick={handleAddImageClick} title="사진을 노드로 추가">
                 + 사진
               </button>
@@ -415,6 +427,10 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
 
       {showPersonal && (
         <PersonalSpacePanel room={room} username={username} onClose={() => setShowPersonal(false)} />
+      )}
+
+      {showDashboard && (
+        <DashboardPanel tasks={wbsTasks} onClose={() => setShowDashboard(false)} />
       )}
 
       {commentNode && commentNodeId && (
