@@ -13,6 +13,22 @@ import type { Edge, Node } from '@xyflow/react'
 /** WBS 작업 상태 */
 export type WbsStatus = 'todo' | 'doing' | 'done'
 
+/** 첨부(링크 또는 업로드 파일) */
+export interface Attachment {
+  /** 고유 id */
+  id: string
+  /** link = 외부 URL, file = 업로드 파일(data URL 로 저장) */
+  type: 'link' | 'file'
+  /** 표시 이름(링크 제목 또는 파일명) */
+  name: string
+  /** link: URL, file: data URL(base64) */
+  url: string
+  /** 파일 바이트 크기(file 일 때) */
+  size?: number
+  /** MIME 타입(file 일 때) */
+  mime?: string
+}
+
 /** 일반(브레인스토밍) 노드 데이터 */
 export interface PlainNodeData {
   label: string
@@ -29,6 +45,8 @@ export interface WbsNodeData {
   status: WbsStatus
   /** 진행률 0~100 */
   progress: number
+  /** 저장용 첨부(링크/파일) 목록 */
+  attachments?: Attachment[]
   /** 노드 타입 식별용 (data 로도 구분할 수 있게 둠) */
   kind: 'wbs'
   // React Flow 의 Node<T> 제약 충족용 인덱스 시그니처

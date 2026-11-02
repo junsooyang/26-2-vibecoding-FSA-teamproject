@@ -507,3 +507,123 @@ button.danger:hover {
   white-space: nowrap;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
+
+/* ---------- WBS 완료 체크박스 / 첨부 표시 (노드) ---------- */
+.wbs-head {
+  justify-content: space-between;
+}
+
+.wbs-check {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.wbs-check input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #059669;
+}
+
+.wbs-title.done {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+.wbs-attach-count {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #6366f1;
+  font-weight: 600;
+}
+
+/* ---------- 첨부 섹션 (편집 패널) ---------- */
+.attach-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.attach-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.attach-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.attach-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.attach-link:hover .attach-name {
+  text-decoration: underline;
+  color: #6366f1;
+}
+
+.attach-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attach-size {
+  color: #9ca3af;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.attach-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.attach-add input {
+  flex: 1;
+  min-width: 120px;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.attach-add button {
+  white-space: nowrap;
+}
+
+.attach-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.attach-file input[type='file'] {
+  font-size: 12px;
+}
+
+.attach-hint {
+  color: #9ca3af;
+  font-size: 11px;
+}

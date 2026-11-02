@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -14,7 +14,7 @@ import { useCollabBoard, type AwarenessUser } from './collab/useCollabBoard'
 import { isWbsData, type BoardNode, type WbsNodeData } from './collab/yjs'
 import MembersPanel from './screens/MembersPanel'
 import WbsEditPanel from './screens/WbsEditPanel'
-import WbsNode from './nodes/WbsNode'
+import WbsNode, { WBS_TOGGLE_DONE_EVENT } from './nodes/WbsNode'
 import LiveCursors from './nodes/LiveCursors'
 
 interface BoardProps {
@@ -43,9 +43,22 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
     renameNode,
     addWbsNode,
     updateWbsNode,
+    toggleWbsDone,
+    addAttachment,
+    removeAttachment,
     setCursor,
     applyLayout,
   } = useCollabBoard(room, user)
+
+  // WBS 노드 체크박스 토글 이벤트 수신 -> 완료 상태 전환
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id
+      if (id) toggleWbsDone(id)
+    }
+    window.addEventListener(WBS_TOGGLE_DONE_EVENT, handler)
+    return () => window.removeEventListener(WBS_TOGGLE_DONE_EVENT, handler)
+  }, [toggleWbsDone])
 
   const { screenToFlowPosition } = useReactFlow()
 
@@ -142,6 +155,8 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
         <WbsEditPanel
           initial={editingData}
           onSave={(patch) => updateWbsNode(editingWbsId, patch)}
+          onAddAttachment={(a) => addAttachment(editingWbsId, a)}
+          onRemoveAttachment={(aid) => removeAttachment(editingWbsId, aid)}
           onClose={() => setEditingWbsId(null)}
         />
       )}

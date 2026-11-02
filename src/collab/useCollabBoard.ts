@@ -9,6 +9,8 @@ import {
 } from '@xyflow/react'
 import {
   connectRoom,
+  isWbsData,
+  type Attachment,
   type BoardEdge,
   type BoardNode,
   type CollabHandle,
@@ -199,6 +201,45 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     })
   }, [])
 
+  /** 완료 여부 토글: done <-> todo. 완료 시 진행률 100, 해제 시 0 */
+  const toggleWbsDone = useCallback((id: string) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing || !isWbsData(existing.data)) return
+    const nowDone = existing.data.status === 'done'
+    const next = nowDone
+      ? { status: 'todo' as const, progress: 0 }
+      : { status: 'done' as const, progress: 100 }
+    handle.nodes.set(id, { ...existing, data: { ...existing.data, ...next } })
+  }, [])
+
+  /** WBS 노드에 첨부(링크/파일) 추가 */
+  const addAttachment = useCallback((id: string, attachment: Attachment) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing || !isWbsData(existing.data)) return
+    const list = existing.data.attachments ?? []
+    handle.nodes.set(id, {
+      ...existing,
+      data: { ...existing.data, attachments: [...list, attachment] },
+    })
+  }, [])
+
+  /** WBS 노드에서 첨부 삭제 */
+  const removeAttachment = useCallback((id: string, attachmentId: string) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing || !isWbsData(existing.data)) return
+    const list = existing.data.attachments ?? []
+    handle.nodes.set(id, {
+      ...existing,
+      data: { ...existing.data, attachments: list.filter((a) => a.id !== attachmentId) },
+    })
+  }, [])
+
   /** 내 커서 위치(flow 좌표)를 awareness 로 브로드캐스트. null 이면 커서 제거(화면 이탈). */
   const setCursor = useCallback((pos: { x: number; y: number } | null) => {
     const handle = handleRef.current
@@ -232,6 +273,9 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       renameNode,
       addWbsNode,
       updateWbsNode,
+      toggleWbsDone,
+      addAttachment,
+      removeAttachment,
       setCursor,
       applyLayout,
     }),
@@ -248,6 +292,9 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       renameNode,
       addWbsNode,
       updateWbsNode,
+      toggleWbsDone,
+      addAttachment,
+      removeAttachment,
       setCursor,
       applyLayout,
     ],
