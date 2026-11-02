@@ -627,3 +627,73 @@ button.danger:hover {
   color: #9ca3af;
   font-size: 11px;
 }
+
+/* ---------- 이미지(사진) 노드 ---------- */
+.image-node {
+  background: #fff;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.image-node.selected {
+  box-shadow: 0 0 0 2px #6366f1;
+  border-color: #6366f1;
+}
+
+.image-node-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  user-select: none;
+}
+
+.image-node-empty {
+  display: grid;
+  place-items: center;
+  height: 120px;
+  color: #9ca3af;
+  font-size: 13px;
+  background: #f3f4f6;
+  border-radius: 6px;
+}
+
+.image-node-caption {
+  margin-top: 4px;
+  padding: 2px 4px;
+  font-size: 12px;
+  color: #374151;
+  text-align: center;
+  word-break: break-word;
+}
+
+/* ---------- 드래그 합치기: 드롭 대상 하이라이트 ---------- */
+.drop-target .wbs-node,
+.drop-target .image-node,
+.react-flow__node.drop-target {
+  outline: 3px dashed #22c55e;
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+
+.react-flow__node.drop-target {
+  position: relative;
+}
+
+.react-flow__node.drop-target::after {
+  content: '여기에 합치기';
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #22c55e;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}

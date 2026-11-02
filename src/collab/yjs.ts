@@ -53,11 +53,30 @@ export interface WbsNodeData {
   [key: string]: unknown
 }
 
-export type BoardNodeData = PlainNodeData | WbsNodeData
+/** 이미지(사진) 노드 데이터 */
+export interface ImageNodeData {
+  /** 이미지 설명/캡션 */
+  label: string
+  /** 이미지 소스: data URL(업로드) 또는 외부 URL */
+  src: string
+  /** 표시 너비(px). 높이는 비율 유지 */
+  width: number
+  /** 노드 타입 식별용 */
+  kind: 'image'
+  // React Flow 의 Node<T> 제약 충족용 인덱스 시그니처
+  [key: string]: unknown
+}
+
+export type BoardNodeData = PlainNodeData | WbsNodeData | ImageNodeData
 
 /** WBS 노드인지 좁혀주는 타입 가드 */
 export function isWbsData(data: BoardNodeData): data is WbsNodeData {
   return (data as WbsNodeData).kind === 'wbs'
+}
+
+/** 이미지 노드인지 좁혀주는 타입 가드 */
+export function isImageData(data: BoardNodeData): data is ImageNodeData {
+  return (data as ImageNodeData).kind === 'image'
 }
 
 export type BoardNode = Node<BoardNodeData>

@@ -14,6 +14,7 @@ import {
   type BoardEdge,
   type BoardNode,
   type CollabHandle,
+  type ImageNodeData,
   type WbsNodeData,
 } from './yjs'
 import { layoutNodes, type LayoutDirection } from './layout'
@@ -259,6 +260,80 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     })
   }, [])
 
+  /** 새 이미지(사진) 노드 추가 */
+  const addImageNode = useCallback(
+    (src: string, position: { x: number; y: number }, label = '') => {
+      const handle = handleRef.current
+      if (!handle) return
+      const id = `img-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+      const node: BoardNode = {
+        id,
+        position,
+        type: 'image',
+        data: { label, src, width: 220, kind: 'image' },
+      }
+      handle.nodes.set(id, node)
+      return id
+    },
+    [],
+  )
+
+  /** 이미지 노드 필드 수정 (캡션/너비 등) */
+  const updateImageNode = useCallback((id: string, patch: Partial<ImageNodeData>) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing) return
+    handle.nodes.set(id, { ...existing, data: { ...existing.data, ...patch } })
+  }, [])
+
+  /**
+   * 노드 병합(합치기): 드래그한 노드(sourceId)를 대상 노드(targetId) 아래로
+   * 부모-자식 연결한다. 이미 연결돼 있으면 아무것도 하지 않는다.
+   */
+  const connectNodes = useCallback((sourceId: string, targetId: string) => {
+    const handle = handleRef.current
+    if (!handle || sourceId === targetId) return
+    // 중복/역방향 엣지 방지
+    for (const e of handle.edges.values()) {
+      if (
+        (e.source === targetId && e.target === sourceId) ||
+        (e.source === sourceId && e.target === targetId)
+      ) {
+        return
+      }
+    }
+    const id = `edge-${targetId}-${sourceId}`
+    const edge: BoardEdge = { id, source: targetId, target: sourceId }
+    handle.edges.set(id, edge)
+  }, [])
+
+  /**
+   * 선택한 노드들(없으면 전체)을 격자(행렬)로 정렬한다.
+   * 왼쪽 위부터 열(columns) 수만큼 채우며 등간격 배치. → 사진/텍스트 줄맞춤.
+   */
+  const alignGrid = useCallback((ids?: string[], columns = 4, gapX = 260, gapY = 200) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const all = Array.from(handle.nodes.values())
+    const targets =
+      ids && ids.length > 0 ? all.filter((n) => ids.includes(n.id)) : all
+    if (targets.length === 0) return
+    // 기준점: 대상 노드들의 최소 x,y (현재 위치 근처에서 정렬)
+    const baseX = Math.min(...targets.map((n) => n.position.x))
+    const baseY = Math.min(...targets.map((n) => n.position.y))
+    handle.doc.transact(() => {
+      targets.forEach((node, i) => {
+        const col = i % columns
+        const row = Math.floor(i / columns)
+        handle.nodes.set(node.id, {
+          ...node,
+          position: { x: baseX + col * gapX, y: baseY + row * gapY },
+        })
+      })
+    })
+  }, [])
+
   return useMemo(
     () => ({
       nodes,
@@ -278,6 +353,10 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       removeAttachment,
       setCursor,
       applyLayout,
+      addImageNode,
+      updateImageNode,
+      connectNodes,
+      alignGrid,
     }),
     [
       nodes,
@@ -297,6 +376,10 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       removeAttachment,
       setCursor,
       applyLayout,
+      addImageNode,
+      updateImageNode,
+      connectNodes,
+      alignGrid,
     ],
   )
 }
