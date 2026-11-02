@@ -17,6 +17,8 @@ import {
   type CollabHandle,
   type Comment,
   type ImageNodeData,
+  type Poll,
+  type PollOption,
   type StickyColor,
   type StickyNodeData,
   type WbsNodeData,
@@ -51,6 +53,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
   const [edges, setEdges] = useState<BoardEdge[]>([])
   const [peers, setPeers] = useState<AwarenessUser[]>([])
   const [cursors, setCursors] = useState<RemoteCursor[]>([])
+  const [poll, setPoll] = useState<Poll | null>(null)
   const [connected, setConnected] = useState(false)
 
   // 방 연결 + Yjs 관찰자 등록
@@ -60,12 +63,15 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
 
     const syncNodes = () => setNodes(Array.from(handle.nodes.values()))
     const syncEdges = () => setEdges(Array.from(handle.edges.values()))
+    const syncPoll = () => setPoll((handle.poll.get('current') as Poll | null) ?? null)
 
     handle.nodes.observe(syncNodes)
     handle.edges.observe(syncEdges)
+    handle.poll.observe(syncPoll)
     // 초기 상태 반영
     syncNodes()
     syncEdges()
+    syncPoll()
 
     handle.provider.on('status', (e: { status: string }) => {
       setConnected(e.status === 'connected')
@@ -103,6 +109,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     return () => {
       handle.nodes.unobserve(syncNodes)
       handle.edges.unobserve(syncEdges)
+      handle.poll.unobserve(syncPoll)
       handle.awareness.off('change', syncAwareness)
       handle.destroy()
       handleRef.current = null
@@ -519,6 +526,61 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     return id
   }, [])
 
+  // --- 투표 세션 ---
+
+  /** 새 투표 생성 (질문 + 선택지들). 기존 투표는 덮어쓴다. */
+  const createPoll = useCallback((question: string, optionTexts: string[], owner: string) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const options: PollOption[] = optionTexts
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((t, i) => ({ id: `opt-${Date.now()}-${i}`, text: t, voters: [] }))
+    if (options.length < 2) return // 선택지 최소 2개
+    const newPoll: Poll = {
+      id: `poll-${Date.now()}`,
+      question: question.trim() || '(제목 없는 투표)',
+      options,
+      owner,
+      closed: false,
+      createdAt: Date.now(),
+    }
+    handle.poll.set('current', newPoll)
+  }, [])
+
+  /** 투표하기: 한 선택지에만 1표(이미 그 선택지면 취소, 다른 선택지면 이동). 종료된 투표는 무시. */
+  const votePoll = useCallback((optionId: string, username: string) => {
+    const handle = handleRef.current
+    if (!handle || !username) return
+    const current = handle.poll.get('current') as Poll | null
+    if (!current || current.closed) return
+    const options = current.options.map((opt) => {
+      // 모든 선택지에서 내 표를 먼저 제거
+      const voters = opt.voters.filter((u) => u !== username)
+      // 누른 선택지에는, 기존에 안 눌렀던 경우에만 추가(= 다시 누르면 취소 효과)
+      const wasVoted = opt.voters.includes(username)
+      if (opt.id === optionId && !wasVoted) voters.push(username)
+      return { ...opt, voters }
+    })
+    handle.poll.set('current', { ...current, options })
+  }, [])
+
+  /** 투표 종료 (만든 사람만 — 권한은 호출부에서 확인) */
+  const closePoll = useCallback(() => {
+    const handle = handleRef.current
+    if (!handle) return
+    const current = handle.poll.get('current') as Poll | null
+    if (!current) return
+    handle.poll.set('current', { ...current, closed: true })
+  }, [])
+
+  /** 투표 삭제(치우기) */
+  const clearPoll = useCallback(() => {
+    const handle = handleRef.current
+    if (!handle) return
+    handle.poll.set('current', null)
+  }, [])
+
   return useMemo(
     () => ({
       nodes,
@@ -552,6 +614,11 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       toggleChecklistItem,
       removeChecklistItem,
       promoteToWbs,
+      poll,
+      createPoll,
+      votePoll,
+      closePoll,
+      clearPoll,
     }),
     [
       nodes,
@@ -585,6 +652,11 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       toggleChecklistItem,
       removeChecklistItem,
       promoteToWbs,
+      poll,
+      createPoll,
+      votePoll,
+      closePoll,
+      clearPoll,
     ],
   )
 }

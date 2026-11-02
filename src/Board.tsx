@@ -26,6 +26,8 @@ import WbsEditPanel from './screens/WbsEditPanel'
 import CommentsPanel from './screens/CommentsPanel'
 import PersonalSpacePanel from './screens/PersonalSpacePanel'
 import DashboardPanel from './screens/DashboardPanel'
+import TextInputModal from './screens/TextInputModal'
+import PollPanel from './screens/PollPanel'
 import WbsNode from './nodes/WbsNode'
 import ImageNode from './nodes/ImageNode'
 import StickyNode from './nodes/StickyNode'
@@ -89,8 +91,17 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [showPersonal, setShowPersonal] = useState(false)
   // 대시보드 패널 열림 여부
   const [showDashboard, setShowDashboard] = useState(false)
+  // 투표 패널 열림 여부
+  const [showPoll, setShowPoll] = useState(false)
   // 부가 기능(사진/정렬/개인공간 등) 더보기 펼침 여부
   const [showMore, setShowMore] = useState(false)
+  // 여러 줄 텍스트 입력 모달 상태 (null = 닫힘)
+  const [textModal, setTextModal] = useState<{
+    title: string
+    initial: string
+    confirmLabel: string
+    onSubmit: (text: string) => void
+  } | null>(null)
   const {
     nodes,
     edges,
@@ -122,6 +133,11 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     toggleChecklistItem,
     removeChecklistItem,
     promoteToWbs,
+    poll,
+    createPoll,
+    votePoll,
+    closePoll,
+    clearPoll,
   } = useCollabBoard(room, user)
 
   // 드래그 중인 노드 위에 겹친 "드롭 대상" 노드 id (초록 하이라이트용)
@@ -224,19 +240,26 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     if (commentNodeId && !commentNode) setCommentNodeId(null)
   }, [commentNodeId, commentNode])
 
-  // 빈 캔버스 더블클릭 -> 새 일반 노드 추가 (빈 pane 에서만)
+  // 빈 캔버스 더블클릭 -> 새 아이디어 노드 추가 (여러 줄 입력 모달)
   const handlePaneDoubleClick = useCallback(
     (event: React.MouseEvent) => {
       const target = event.target as HTMLElement
       if (!target.classList.contains('react-flow__pane')) return
       const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-      const label = window.prompt('노드 내용 입력', '새 아이디어')
-      if (label) addNode(label, position)
+      setTextModal({
+        title: '새 아이디어',
+        initial: '',
+        confirmLabel: '추가',
+        onSubmit: (text) => {
+          const t = text.trim()
+          if (t) addNode(t, position)
+        },
+      })
     },
     [addNode, screenToFlowPosition],
   )
 
-  // 노드 더블클릭 -> WBS 노드는 편집 패널, 일반 노드는 프롬프트
+  // 노드 더블클릭 -> WBS 는 편집 패널, 그 외는 여러 줄 입력 모달
   const handleNodeDoubleClick: NodeMouseHandler<BoardNode> = useCallback(
     (_event, node) => {
       if (isWbsData(node.data)) {
@@ -244,12 +267,20 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         return
       }
       if (isStickyData(node.data)) {
-        const text = window.prompt('메모 내용', node.data.text)
-        if (text != null) updateStickyNode(node.id, { text })
+        setTextModal({
+          title: '메모 수정',
+          initial: node.data.text,
+          confirmLabel: '저장',
+          onSubmit: (text) => updateStickyNode(node.id, { text }),
+        })
         return
       }
-      const label = window.prompt('노드 수정', String(node.data.label))
-      if (label != null) renameNode(node.id, label)
+      setTextModal({
+        title: '아이디어 수정',
+        initial: String(node.data.label ?? ''),
+        confirmLabel: '저장',
+        onSubmit: (text) => renameNode(node.id, text),
+      })
     },
     [renameNode, updateStickyNode],
   )
@@ -264,17 +295,23 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     if (id) setEditingWbsId(id)
   }, [addWbsNode, screenToFlowPosition])
 
-  // 화면 중앙 근처에 스티커 메모 추가 후 바로 텍스트 입력
+  // 화면 중앙 근처에 스티커 메모 추가 (여러 줄 입력 모달)
   const handleAddSticky = useCallback(() => {
-    const position = screenToFlowPosition({
-      x: window.innerWidth / 2,
-      y: window.innerHeight / 2,
+    setTextModal({
+      title: '새 메모',
+      initial: '',
+      confirmLabel: '추가',
+      onSubmit: (text) => {
+        const t = text.trim()
+        if (!t) return
+        const position = screenToFlowPosition({
+          x: window.innerWidth / 2,
+          y: window.innerHeight / 2,
+        })
+        const id = addStickyNode(position)
+        if (id) updateStickyNode(id, { text: t })
+      },
     })
-    const id = addStickyNode(position)
-    if (id) {
-      const text = window.prompt('메모 내용', '')
-      if (text) updateStickyNode(id, { text })
-    }
   }, [addStickyNode, updateStickyNode, screenToFlowPosition])
 
   // 마우스 이동 -> 내 커서(flow 좌표) 브로드캐스트
@@ -428,6 +465,9 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
               <button onClick={() => setShowDashboard(true)} title="팀원별 현황 / 전체 진행률">
                 📊 대시보드
               </button>
+              <button onClick={() => setShowPoll(true)} title="질문/선택지로 팀 투표 진행">
+                🗳️ 투표{poll && !poll.closed ? ' •' : ''}
+              </button>
               <button onClick={handleAddImageClick} title="사진을 노드로 추가">
                 + 사진
               </button>
@@ -455,6 +495,16 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         onChange={handleImagePicked}
       />
 
+      {textModal && (
+        <TextInputModal
+          title={textModal.title}
+          initial={textModal.initial}
+          confirmLabel={textModal.confirmLabel}
+          onSubmit={textModal.onSubmit}
+          onClose={() => setTextModal(null)}
+        />
+      )}
+
       {showMembers && <MembersPanel slug={room} onClose={() => setShowMembers(false)} />}
 
       {showPersonal && (
@@ -463,6 +513,18 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
 
       {showDashboard && (
         <DashboardPanel tasks={wbsTasks} onClose={() => setShowDashboard(false)} />
+      )}
+
+      {showPoll && (
+        <PollPanel
+          poll={poll}
+          username={username}
+          onCreate={(q, opts) => createPoll(q, opts, username)}
+          onVote={(optId) => votePoll(optId, username)}
+          onCloseVote={closePoll}
+          onClear={clearPoll}
+          onDismiss={() => setShowPoll(false)}
+        />
       )}
 
       {commentNode && commentNodeId && (
