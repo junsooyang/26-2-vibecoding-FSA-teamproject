@@ -95,8 +95,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [editingWbsId, setEditingWbsId] = useState<string | null>(null)
   // 댓글 패널 대상 노드 id (null = 닫힘)
   const [commentNodeId, setCommentNodeId] = useState<string | null>(null)
-  // 개인 공간 패널 열림 여부
-  const [showPersonal, setShowPersonal] = useState(false)
+  // 왼쪽 개인 공간 패널 접힘 여부 (기본 접힘 → 왼쪽 라인만 표시)
+  const [personalCollapsed, setPersonalCollapsed] = useState(true)
   // 대시보드 패널 열림 여부
   const [showDashboard, setShowDashboard] = useState(false)
   // 투표 패널 열림 여부
@@ -544,9 +544,6 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
               <button onClick={handleAlignGrid} title="선택 노드(없으면 전체)를 격자로 줄맞춤">
                 격자 정렬 ▦
               </button>
-              <button onClick={() => setShowPersonal(true)} title="나만 보는 노트장 / 파일 보관함">
-                🗂️ 개인 공간
-              </button>
               <button onClick={() => setShowMembers(true)}>멤버 관리</button>
             </span>
           )}
@@ -577,9 +574,12 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
 
       {showMembers && <MembersPanel slug={room} onClose={() => setShowMembers(false)} />}
 
-      {showPersonal && (
-        <PersonalSpacePanel room={room} username={username} onClose={() => setShowPersonal(false)} />
-      )}
+      <PersonalSpacePanel
+        room={room}
+        username={username}
+        collapsed={personalCollapsed}
+        onToggle={() => setPersonalCollapsed((v) => !v)}
+      />
 
       {showDashboard && (
         <DashboardPanel tasks={wbsTasks} onClose={() => setShowDashboard(false)} />

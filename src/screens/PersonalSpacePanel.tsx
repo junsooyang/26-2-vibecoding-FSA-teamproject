@@ -6,7 +6,10 @@ interface Props {
   room: string
   /** 현재 사용자 username (헤더 표시용. 실제 식별은 서버에서 JWT 로 처리) */
   username: string
-  onClose: () => void
+  /** 접힘 여부 (true 면 얇은 탭만 표시) */
+  collapsed: boolean
+  /** 접기/펼치기 토글 */
+  onToggle: () => void
 }
 
 /** 개인 파일 최대 크기(2MB). */
@@ -28,7 +31,7 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error'
  * - 데이터는 **서버(SQLite)** 에 사용자+방별로 저장된다. (JWT 로 본인 식별)
  *   → 어느 기기/브라우저에서 로그인해도 동일하게 보인다. 공유는 되지 않음.
  */
-export default function PersonalSpacePanel({ room, username, onClose }: Props) {
+export default function PersonalSpacePanel({ room, username, collapsed, onToggle }: Props) {
   const [data, setData] = useState<PersonalSpace>({ note: '', files: [] })
   const [loading, setLoading] = useState(true)
   const [fileError, setFileError] = useState('')
@@ -112,18 +115,28 @@ export default function PersonalSpacePanel({ room, username, onClose }: Props) {
   }
 
   return (
-    <aside className="side-panel personal-panel" onClick={(e) => e.stopPropagation()}>
-      <div className="side-head">
-        <div>
-          <h3>🗂️ 내 개인 공간</h3>
-          <p className="side-sub">@{username} · 나만 볼 수 있어요</p>
-        </div>
-        <button type="button" className="ghost" onClick={onClose}>
-          닫기
-        </button>
-      </div>
+    <aside className={collapsed ? 'left-dock collapsed' : 'left-dock'}>
+      {/* 접기/펼치기 탭 (항상 보임) */}
+      <button
+        type="button"
+        className="left-dock-tab"
+        onClick={onToggle}
+        title={collapsed ? '내 개인 공간 열기' : '접기'}
+      >
+        <span className="left-dock-tab-icon">🗂️</span>
+        <span className="left-dock-tab-label">{collapsed ? '개인 공간' : '접기 ◀'}</span>
+      </button>
 
-      {loading ? (
+      {/* 펼쳐졌을 때만 보이는 본문 */}
+      <div className="left-dock-body">
+        <div className="side-head">
+          <div>
+            <h3>🗂️ 내 개인 공간</h3>
+            <p className="side-sub">@{username} · 나만 볼 수 있어요</p>
+          </div>
+        </div>
+
+        {loading ? (
         <div className="personal-body">
           <p className="tip">불러오는 중...</p>
         </div>
@@ -170,7 +183,8 @@ export default function PersonalSpacePanel({ room, username, onClose }: Props) {
             <p className={saveState === 'error' ? 'error' : 'tip'}>{saveLabel[saveState]}</p>
           )}
         </div>
-      )}
+        )}
+      </div>
     </aside>
   )
 }
