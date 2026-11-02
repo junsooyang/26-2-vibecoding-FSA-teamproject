@@ -28,6 +28,7 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
     assignee: string
     status: WbsStatus
     progress: number
+    seq?: number
     due?: string
     checklist?: { id: string; text: string; done: boolean }[]
     attachments?: Attachment[]
@@ -64,6 +65,7 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
         <label className="wbs-check" onClick={onToggle} title={done ? '완료 해제' : '완료로 표시'}>
           <input type="checkbox" checked={done} onChange={onToggle} onClick={(e) => e.stopPropagation()} />
         </label>
+        {d.seq != null && <span className="node-seq" title="생성 순서">#{d.seq}</span>}
         <span className="wbs-status" style={{ color: status.color, background: status.bg }}>
           {status.label}
         </span>

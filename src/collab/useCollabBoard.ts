@@ -158,7 +158,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     const node: BoardNode = {
       id,
       position,
-      data: { label },
+      data: { label, createdAt: Date.now() },
       type: 'default',
     }
     handle.nodes.set(id, node)
@@ -188,6 +188,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
         status: 'todo',
         progress: 0,
         kind: 'wbs',
+        createdAt: Date.now(),
       },
     }
     handle.nodes.set(id, node)
@@ -274,7 +275,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
         id,
         position,
         type: 'image',
-        data: { label, src, width: 220, kind: 'image' },
+        data: { label, src, width: 220, kind: 'image', createdAt: Date.now() },
       }
       handle.nodes.set(id, node)
       return id
@@ -348,7 +349,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
         id,
         position,
         type: 'sticky',
-        data: { text: '', color, votes: [], kind: 'sticky' },
+        data: { text: '', color, votes: [], kind: 'sticky', createdAt: Date.now() },
       }
       handle.nodes.set(id, node)
       return id

@@ -23,7 +23,7 @@ const COLOR_ORDER: StickyColor[] = ['yellow', 'pink', 'blue', 'green']
  * - 👍 투표 버튼 포함
  */
 export default function StickyNode({ id, data, selected }: NodeProps) {
-  const d = data as StickyNodeData
+  const d = data as StickyNodeData & { seq?: number }
   const me = useCurrentUsername()
   const palette = STICKY_COLORS[d.color] ?? STICKY_COLORS.yellow
   const voted = !!me && (d.votes?.includes(me) ?? false)
@@ -55,6 +55,7 @@ export default function StickyNode({ id, data, selected }: NodeProps) {
             title={`${c} 색상`}
           />
         ))}
+        {d.seq != null && <span className="node-seq" title="생성 순서">#{d.seq}</span>}
       </div>
 
       <div className="sticky-text">{d.text || '(빈 메모 — 더블클릭해서 입력)'}</div>

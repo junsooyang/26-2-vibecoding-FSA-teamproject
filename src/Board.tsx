@@ -182,13 +182,34 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     [],
   )
 
-  // 드래그 대상에 하이라이트 클래스를 입힌 노드 배열
+  // 노드별 생성 순번(seq) 계산: createdAt(없으면 id 의 timestamp) 기준 오름차순
+  const seqById = useMemo(() => {
+    const orderKey = (n: BoardNode) => {
+      const created = (n.data as { createdAt?: number }).createdAt
+      if (typeof created === 'number') return created
+      // 구버전 노드: id 의 두 번째 토큰(timestamp) 으로 보조
+      const parts = n.id.split('-')
+      const ts = Number(parts[1])
+      return Number.isFinite(ts) ? ts : 0
+    }
+    const sorted = [...nodes].sort((a, b) => orderKey(a) - orderKey(b) || a.id.localeCompare(b.id))
+    const map: Record<string, number> = {}
+    sorted.forEach((n, i) => {
+      map[n.id] = i + 1
+    })
+    return map
+  }, [nodes])
+
+  // 드래그 하이라이트 + 생성 순번(seq)을 data 에 주입한 노드 배열
   const displayNodes = useMemo(
     () =>
-      nodes.map((n) =>
-        n.id === dropTargetId ? { ...n, className: `${n.className ?? ''} drop-target`.trim() } : n,
-      ),
-    [nodes, dropTargetId],
+      nodes.map((n) => {
+        const withSeq = { ...n, data: { ...n.data, seq: seqById[n.id] } }
+        return n.id === dropTargetId
+          ? { ...withSeq, className: `${n.className ?? ''} drop-target`.trim() }
+          : withSeq
+      }),
+    [nodes, dropTargetId, seqById],
   )
 
   // 편집 중인 WBS 노드의 현재 데이터
