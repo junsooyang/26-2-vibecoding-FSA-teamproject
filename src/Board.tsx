@@ -12,12 +12,15 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useCollabBoard, type AwarenessUser } from './collab/useCollabBoard'
-import { isWbsData, type BoardNode, type WbsNodeData } from './collab/yjs'
+import { isStickyData, isWbsData, type BoardNode, type StickyColor, type WbsNodeData } from './collab/yjs'
 import MembersPanel from './screens/MembersPanel'
 import WbsEditPanel from './screens/WbsEditPanel'
-import WbsNode, { WBS_TOGGLE_DONE_EVENT } from './nodes/WbsNode'
+import WbsNode from './nodes/WbsNode'
 import ImageNode from './nodes/ImageNode'
+import StickyNode from './nodes/StickyNode'
 import LiveCursors from './nodes/LiveCursors'
+import { CurrentUserContext } from './nodes/CurrentUserContext'
+import { NODE_VOTE_EVENT, STICKY_COLOR_EVENT, WBS_TOGGLE_DONE_EVENT } from './nodes/nodeEvents'
 
 /** 업로드 이미지 최대 크기(3MB). data URL 로 Yjs 에 저장되므로 과도한 용량 방지. */
 const MAX_IMAGE_SIZE = 3 * 1024 * 1024
@@ -44,10 +47,12 @@ interface BoardProps {
   /** 화면에 표시할 방 이름 */
   roomName: string
   user: AwarenessUser
+  /** 현재 로그인 사용자 username (투표 1인 1표 식별용) */
+  username: string
   onLeave: () => void
 }
 
-function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
+function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [showMembers, setShowMembers] = useState(false)
   // 편집 중인 WBS 노드 id (null = 패널 닫힘)
   const [editingWbsId, setEditingWbsId] = useState<string | null>(null)
@@ -72,6 +77,9 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
     addImageNode,
     connectNodes,
     alignGrid,
+    addStickyNode,
+    updateStickyNode,
+    toggleVote,
   } = useCollabBoard(room, user)
 
   // 드래그 중인 노드 위에 겹친 "드롭 대상" 노드 id (초록 하이라이트용)
@@ -79,20 +87,37 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
   // 이미지 업로드용 숨은 input
   const imageInputRef = useRef<HTMLInputElement>(null)
 
-  // WBS 노드 체크박스 토글 이벤트 수신 -> 완료 상태 전환
+  // 노드 내부 상호작용(완료 토글 / 투표 / 스티커 색상) 이벤트 수신
   useEffect(() => {
-    const handler = (e: Event) => {
+    const onToggleDone = (e: Event) => {
       const id = (e as CustomEvent<{ id: string }>).detail?.id
       if (id) toggleWbsDone(id)
     }
-    window.addEventListener(WBS_TOGGLE_DONE_EVENT, handler)
-    return () => window.removeEventListener(WBS_TOGGLE_DONE_EVENT, handler)
-  }, [toggleWbsDone])
+    const onVote = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id
+      if (id) toggleVote(id, username)
+    }
+    const onStickyColor = (e: Event) => {
+      const { id, color } = (e as CustomEvent<{ id: string; color: StickyColor }>).detail ?? {}
+      if (id && color) updateStickyNode(id, { color })
+    }
+    window.addEventListener(WBS_TOGGLE_DONE_EVENT, onToggleDone)
+    window.addEventListener(NODE_VOTE_EVENT, onVote)
+    window.addEventListener(STICKY_COLOR_EVENT, onStickyColor)
+    return () => {
+      window.removeEventListener(WBS_TOGGLE_DONE_EVENT, onToggleDone)
+      window.removeEventListener(NODE_VOTE_EVENT, onVote)
+      window.removeEventListener(STICKY_COLOR_EVENT, onStickyColor)
+    }
+  }, [toggleWbsDone, toggleVote, updateStickyNode, username])
 
   const { screenToFlowPosition } = useReactFlow()
 
   // 커스텀 노드 타입 등록
-  const nodeTypes = useMemo<NodeTypes>(() => ({ wbs: WbsNode, image: ImageNode }), [])
+  const nodeTypes = useMemo<NodeTypes>(
+    () => ({ wbs: WbsNode, image: ImageNode, sticky: StickyNode }),
+    [],
+  )
 
   // 드래그 대상에 하이라이트 클래스를 입힌 노드 배열
   const displayNodes = useMemo(
@@ -127,10 +152,15 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
         setEditingWbsId(node.id)
         return
       }
+      if (isStickyData(node.data)) {
+        const text = window.prompt('메모 내용', node.data.text)
+        if (text != null) updateStickyNode(node.id, { text })
+        return
+      }
       const label = window.prompt('노드 수정', String(node.data.label))
       if (label != null) renameNode(node.id, label)
     },
-    [renameNode],
+    [renameNode, updateStickyNode],
   )
 
   // 화면 중앙 근처에 WBS 노드 추가
@@ -142,6 +172,19 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
     const id = addWbsNode(position)
     if (id) setEditingWbsId(id)
   }, [addWbsNode, screenToFlowPosition])
+
+  // 화면 중앙 근처에 스티커 메모 추가 후 바로 텍스트 입력
+  const handleAddSticky = useCallback(() => {
+    const position = screenToFlowPosition({
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    })
+    const id = addStickyNode(position)
+    if (id) {
+      const text = window.prompt('메모 내용', '')
+      if (text) updateStickyNode(id, { text })
+    }
+  }, [addStickyNode, updateStickyNode, screenToFlowPosition])
 
   // 마우스 이동 -> 내 커서(flow 좌표) 브로드캐스트
   const handleMouseMove = useCallback(
@@ -209,6 +252,7 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
   }, [nodes, alignGrid])
 
   return (
+    <CurrentUserContext.Provider value={username}>
     <div
       style={{ width: '100vw', height: '100vh' }}
       onMouseMove={handleMouseMove}
@@ -230,6 +274,9 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
           더블클릭: 아이디어 · 노드를 다른 노드 위로 드래그: 합치기 · 점끼리 드래그: 연결
         </span>
         <button onClick={handleAddWbs}>+ WBS 작업</button>
+        <button onClick={handleAddSticky} title="스티커 메모(포스트잇) 추가">
+          + 메모
+        </button>
         <button onClick={handleAddImageClick} title="사진을 노드로 추가">
           + 사진
         </button>
@@ -287,6 +334,7 @@ function BoardInner({ room, roomName, user, onLeave }: BoardProps) {
         <LiveCursors cursors={cursors} />
       </ReactFlow>
     </div>
+    </CurrentUserContext.Provider>
   )
 }
 

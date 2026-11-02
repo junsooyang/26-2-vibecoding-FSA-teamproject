@@ -1,5 +1,11 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { Attachment, WbsStatus } from '../collab/yjs'
+import { useCurrentUsername } from './CurrentUserContext'
+import { WBS_TOGGLE_DONE_EVENT } from './nodeEvents'
+import VoteButton from './VoteButton'
+
+// 기존 import 경로 호환을 위해 재노출
+export { WBS_TOGGLE_DONE_EVENT }
 
 /** 상태별 라벨/색상 */
 export const WBS_STATUS: Record<WbsStatus, { label: string; color: string; bg: string }> = {
@@ -13,9 +19,6 @@ export const WBS_STATUS: Record<WbsStatus, { label: string; color: string; bg: s
  * 작업명 + 담당자 + 상태 배지 + 진행률 바를 표시한다.
  * 상/하 핸들로 트리(부모-자식) 연결이 가능하다.
  */
-/** 노드 내부 상호작용(완료 토글 등)을 Board 로 전달하는 커스텀 이벤트 이름 */
-export const WBS_TOGGLE_DONE_EVENT = 'wbs-toggle-done'
-
 export default function WbsNode({ id, data, selected }: NodeProps) {
   const d = data as {
     label: string
@@ -23,11 +26,14 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
     status: WbsStatus
     progress: number
     attachments?: Attachment[]
+    votes?: string[]
   }
+  const me = useCurrentUsername()
   const status = WBS_STATUS[d.status] ?? WBS_STATUS.todo
   const progress = Math.max(0, Math.min(100, Number(d.progress) || 0))
   const done = d.status === 'done'
   const attachmentCount = d.attachments?.length ?? 0
+  const voted = !!me && (d.votes?.includes(me) ?? false)
 
   // 체크박스 토글 -> Board 에 알림(이벤트). 노드 더블클릭 편집과 섞이지 않게 버블링 중단.
   const onToggle = (e: React.MouseEvent | React.ChangeEvent) => {
@@ -62,11 +68,14 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
         />
       </div>
 
-      {attachmentCount > 0 && (
-        <div className="wbs-attach-count" title={`첨부 ${attachmentCount}개`}>
-          📎 {attachmentCount}
-        </div>
-      )}
+      <div className="wbs-foot">
+        {attachmentCount > 0 && (
+          <span className="wbs-attach-count" title={`첨부 ${attachmentCount}개`}>
+            📎 {attachmentCount}
+          </span>
+        )}
+        <VoteButton nodeId={id} votes={d.votes} voted={voted} />
+      </div>
 
       <Handle type="source" position={Position.Bottom} />
     </div>

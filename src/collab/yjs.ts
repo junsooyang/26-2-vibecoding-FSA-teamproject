@@ -36,6 +36,9 @@ export interface PlainNodeData {
   [key: string]: unknown
 }
 
+/** 스티커 메모 색상 */
+export type StickyColor = 'yellow' | 'pink' | 'blue' | 'green'
+
 /** WBS(작업 분해) 노드 데이터 */
 export interface WbsNodeData {
   label: string
@@ -47,8 +50,24 @@ export interface WbsNodeData {
   progress: number
   /** 저장용 첨부(링크/파일) 목록 */
   attachments?: Attachment[]
+  /** 투표한 사용자 username 목록 (1인 1표) */
+  votes?: string[]
   /** 노드 타입 식별용 (data 로도 구분할 수 있게 둠) */
   kind: 'wbs'
+  // React Flow 의 Node<T> 제약 충족용 인덱스 시그니처
+  [key: string]: unknown
+}
+
+/** 스티커(포스트잇) 메모 노드 데이터 */
+export interface StickyNodeData {
+  /** 메모 텍스트 */
+  text: string
+  /** 메모 색상 */
+  color: StickyColor
+  /** 투표한 사용자 username 목록 (1인 1표) */
+  votes?: string[]
+  /** 노드 타입 식별용 */
+  kind: 'sticky'
   // React Flow 의 Node<T> 제약 충족용 인덱스 시그니처
   [key: string]: unknown
 }
@@ -67,7 +86,7 @@ export interface ImageNodeData {
   [key: string]: unknown
 }
 
-export type BoardNodeData = PlainNodeData | WbsNodeData | ImageNodeData
+export type BoardNodeData = PlainNodeData | WbsNodeData | ImageNodeData | StickyNodeData
 
 /** WBS 노드인지 좁혀주는 타입 가드 */
 export function isWbsData(data: BoardNodeData): data is WbsNodeData {
@@ -77,6 +96,11 @@ export function isWbsData(data: BoardNodeData): data is WbsNodeData {
 /** 이미지 노드인지 좁혀주는 타입 가드 */
 export function isImageData(data: BoardNodeData): data is ImageNodeData {
   return (data as ImageNodeData).kind === 'image'
+}
+
+/** 스티커 메모 노드인지 좁혀주는 타입 가드 */
+export function isStickyData(data: BoardNodeData): data is StickyNodeData {
+  return (data as StickyNodeData).kind === 'sticky'
 }
 
 export type BoardNode = Node<BoardNodeData>

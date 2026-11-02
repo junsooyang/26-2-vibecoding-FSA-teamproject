@@ -64,6 +64,7 @@ export default function App() {
       room={room.slug}
       roomName={room.name}
       user={awarenessUser}
+      username={user.username}
       onLeave={() => setRoom(null)}
     />
   )

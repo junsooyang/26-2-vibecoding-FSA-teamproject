@@ -15,6 +15,8 @@ import {
   type BoardNode,
   type CollabHandle,
   type ImageNodeData,
+  type StickyColor,
+  type StickyNodeData,
   type WbsNodeData,
 } from './yjs'
 import { layoutNodes, type LayoutDirection } from './layout'
@@ -334,6 +336,50 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     })
   }, [])
 
+  /** 새 스티커(포스트잇) 메모 노드 추가 */
+  const addStickyNode = useCallback(
+    (position: { x: number; y: number }, color: StickyColor = 'yellow') => {
+      const handle = handleRef.current
+      if (!handle) return
+      const id = `sticky-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+      const node: BoardNode = {
+        id,
+        position,
+        type: 'sticky',
+        data: { text: '', color, votes: [], kind: 'sticky' },
+      }
+      handle.nodes.set(id, node)
+      return id
+    },
+    [],
+  )
+
+  /** 스티커 메모 필드 수정 (텍스트/색상) */
+  const updateStickyNode = useCallback((id: string, patch: Partial<StickyNodeData>) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing) return
+    handle.nodes.set(id, { ...existing, data: { ...existing.data, ...patch } })
+  }, [])
+
+  /**
+   * 노드 투표 토글(1인 1표). username 이 votes 배열에 있으면 제거, 없으면 추가.
+   * WBS/스티커 등 votes 필드를 가진 노드에 공통 적용.
+   */
+  const toggleVote = useCallback((id: string, username: string) => {
+    const handle = handleRef.current
+    if (!handle || !username) return
+    const existing = handle.nodes.get(id)
+    if (!existing) return
+    const data = existing.data as { votes?: string[] }
+    const votes = data.votes ?? []
+    const next = votes.includes(username)
+      ? votes.filter((u) => u !== username)
+      : [...votes, username]
+    handle.nodes.set(id, { ...existing, data: { ...existing.data, votes: next } })
+  }, [])
+
   return useMemo(
     () => ({
       nodes,
@@ -357,6 +403,9 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       updateImageNode,
       connectNodes,
       alignGrid,
+      addStickyNode,
+      updateStickyNode,
+      toggleVote,
     }),
     [
       nodes,
@@ -380,6 +429,9 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       updateImageNode,
       connectNodes,
       alignGrid,
+      addStickyNode,
+      updateStickyNode,
+      toggleVote,
     ],
   )
 }
