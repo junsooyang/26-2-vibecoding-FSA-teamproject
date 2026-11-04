@@ -1177,6 +1177,33 @@ button.danger:hover {
   gap: 6px;
 }
 
+/* 공유: 더보기 안의 버튼. 누르면 바로 아래로 드롭다운 펼침 */
+.share-group {
+  position: relative;
+  display: inline-flex;
+}
+
+.share-submenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+  white-space: nowrap;
+}
+
+.share-submenu button {
+  width: 100%;
+  text-align: left;
+}
+
 .leave-btn {
   border-color: #fca5a5 !important;
   color: #dc2626 !important;
@@ -1185,7 +1212,7 @@ button.danger:hover {
 /* ---------- 상시 노출 채팅 버튼 (오른쪽 상단, 나가기 아래) ---------- */
 .chat-fab {
   position: fixed;
-  top: 54px;
+  top: 84px;
   right: 16px;
   z-index: 60;
   padding: 9px 16px;

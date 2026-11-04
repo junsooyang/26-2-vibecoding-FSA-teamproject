@@ -124,6 +124,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [showChat, setShowChat] = useState(false)
   // 부가 기능(사진/정렬/개인공간 등) 더보기 펼침 여부
   const [showMore, setShowMore] = useState(false)
+  // 공유(이미지/PDF 저장) 메뉴 펼침 여부
+  const [showShare, setShowShare] = useState(false)
   // 여러 줄 텍스트 입력 모달 상태 (null = 닫힘)
   const [textModal, setTextModal] = useState<{
     heading: string
@@ -609,12 +611,42 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
                   ? ' •'
                   : ''}
               </button>
-              <button onClick={handleExportImage} disabled={exporting} title="보드 전체를 이미지(PNG)로 저장">
-                📷 이미지
-              </button>
-              <button onClick={handleExportPdf} disabled={exporting} title="보드 전체를 PDF로 저장">
-                📄 PDF
-              </button>
+
+              {/* 공유 — 누르면 아래로 이미지/PDF 저장 펼침 */}
+              <span className="share-group">
+                <button
+                  onClick={() => setShowShare((v) => !v)}
+                  disabled={exporting}
+                  title="보드 전체를 이미지/PDF로 저장"
+                >
+                  📤 공유{showShare ? ' ▴' : ' ▾'}
+                </button>
+                {showShare && (
+                  <span className="share-submenu">
+                    <button
+                      onClick={() => {
+                        setShowShare(false)
+                        handleExportImage()
+                      }}
+                      disabled={exporting}
+                      title="보드 전체를 이미지(PNG)로 저장"
+                    >
+                      📷 이미지로 저장
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowShare(false)
+                        handleExportPdf()
+                      }}
+                      disabled={exporting}
+                      title="보드 전체를 PDF로 저장"
+                    >
+                      📄 PDF로 저장
+                    </button>
+                  </span>
+                )}
+              </span>
+
               <button onClick={handleAddImageClick} title="사진을 노드로 추가">
                 + 사진
               </button>
