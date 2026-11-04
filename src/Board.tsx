@@ -97,6 +97,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [commentNodeId, setCommentNodeId] = useState<string | null>(null)
   // 왼쪽 개인 공간 패널 접힘 여부 (기본 접힘 → 왼쪽 라인만 표시)
   const [personalCollapsed, setPersonalCollapsed] = useState(true)
+  // 시작 안내 카드를 사용자가 닫았는지
+  const [guideDismissed, setGuideDismissed] = useState(false)
   // 대시보드 패널 열림 여부
   const [showDashboard, setShowDashboard] = useState(false)
   // 투표 패널 열림 여부
@@ -254,7 +256,12 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const handlePaneDoubleClick = useCallback(
     (event: React.MouseEvent) => {
       const target = event.target as HTMLElement
-      if (!target.classList.contains('react-flow__pane')) return
+      // 빈 영역(pane / 배경 패턴)에서만 동작. 노드/버튼/핸들 위 더블클릭은 무시.
+      const onEmptyArea =
+        target.classList.contains('react-flow__pane') ||
+        target.classList.contains('react-flow__background') ||
+        target.closest('.react-flow__background') !== null
+      if (!onEmptyArea) return
       const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
       setTextModal({
         title: '새 아이디어',
@@ -651,9 +658,17 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         </div>
       )}
 
-      {isEmpty && (
+      {isEmpty && !guideDismissed && (
         <div className="empty-guide">
           <div className="empty-card">
+            <button
+              type="button"
+              className="empty-card-close"
+              onClick={() => setGuideDismissed(true)}
+              title="안내 닫기"
+            >
+              ✕
+            </button>
             <h2>이렇게 진행해요 👋</h2>
             <ol className="flow-steps">
               <li>

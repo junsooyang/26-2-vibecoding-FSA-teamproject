@@ -1062,6 +1062,7 @@ button.danger:hover {
 }
 
 .empty-card {
+  position: relative;
   pointer-events: none;
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid #e5e7eb;
@@ -1069,6 +1070,30 @@ button.danger:hover {
   padding: 28px 32px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
   max-width: 460px;
+}
+
+/* 닫기 버튼만 클릭 가능 (카드 자체는 더블클릭을 캔버스로 통과시킴) */
+.empty-card-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #e5e7eb;
+  border-radius: 50%;
+  background: #fff;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+}
+
+.empty-card-close:hover {
+  background: #f3f4f6;
+  color: #1f2937;
 }
 
 .empty-card h2 {
