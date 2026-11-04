@@ -13,6 +13,7 @@ import {
   type Attachment,
   type BoardEdge,
   type BoardNode,
+  type ChatMessage,
   type ChecklistItem,
   type CollabHandle,
   type Comment,
@@ -55,6 +56,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
   const [peers, setPeers] = useState<AwarenessUser[]>([])
   const [cursors, setCursors] = useState<RemoteCursor[]>([])
   const [polls, setPolls] = useState<Poll[]>([])
+  const [chat, setChat] = useState<ChatMessage[]>([])
   const [edgeStyle, setEdgeStyleState] = useState<EdgeStyle>({ color: '#6366f1', width: 2.5 })
   const [connected, setConnected] = useState(false)
 
@@ -73,6 +75,12 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
           .map((p) => ({ ...p, deadline: typeof p.deadline === 'number' ? p.deadline : 0 }))
           .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
       )
+    const syncChat = () =>
+      setChat(
+        handle.chat
+          .toArray()
+          .filter((m): m is ChatMessage => !!m && typeof (m as ChatMessage).id === 'string'),
+      )
     const syncMeta = () => {
       const es = handle.meta.get('edgeStyle') as Partial<EdgeStyle> | undefined
       if (es && typeof es.color === 'string' && typeof es.width === 'number') {
@@ -83,11 +91,13 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     handle.nodes.observe(syncNodes)
     handle.edges.observe(syncEdges)
     handle.poll.observe(syncPoll)
+    handle.chat.observe(syncChat)
     handle.meta.observe(syncMeta)
     // 초기 상태 반영
     syncNodes()
     syncEdges()
     syncPoll()
+    syncChat()
     syncMeta()
 
     handle.provider.on('status', (e: { status: string }) => {
@@ -127,6 +137,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       handle.nodes.unobserve(syncNodes)
       handle.edges.unobserve(syncEdges)
       handle.poll.unobserve(syncPoll)
+      handle.chat.unobserve(syncChat)
       handle.meta.unobserve(syncMeta)
       handle.awareness.off('change', syncAwareness)
       handle.destroy()
@@ -628,6 +639,49 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     handle.poll.delete(pollId)
   }, [])
 
+  /** 방 채팅 메시지 전송 (방에 들어온 참여자 모두에게 실시간 공유) */
+  const sendChatMessage = useCallback(
+    (text: string, author: string, authorUsername: string, color: string) => {
+      const handle = handleRef.current
+      const trimmed = text.trim()
+      if (!handle || !trimmed) return
+      const message: ChatMessage = {
+        id: `chat-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        author,
+        authorUsername,
+        color,
+        text: trimmed,
+        at: Date.now(),
+      }
+      handle.chat.push([message])
+    },
+    [],
+  )
+
+  /** 채팅 메시지 수정 (본인 메시지만 — 권한 체크는 호출부에서) */
+  const editChatMessage = useCallback((id: string, text: string) => {
+    const handle = handleRef.current
+    const trimmed = text.trim()
+    if (!handle || !trimmed) return
+    const arr = handle.chat.toArray()
+    const idx = arr.findIndex((m) => m && m.id === id)
+    if (idx === -1) return
+    const edited: ChatMessage = { ...arr[idx], text: trimmed, editedAt: Date.now() }
+    handle.doc.transact(() => {
+      handle.chat.delete(idx, 1)
+      handle.chat.insert(idx, [edited])
+    })
+  }, [])
+
+  /** 채팅 메시지 삭제 (본인 메시지만 — 권한 체크는 호출부에서) */
+  const deleteChatMessage = useCallback((id: string) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const idx = handle.chat.toArray().findIndex((m) => m && m.id === id)
+    if (idx === -1) return
+    handle.chat.delete(idx, 1)
+  }, [])
+
   /** 공유 연결선 스타일 설정 (모든 참여자에게 반영) */
   const setEdgeStyle = useCallback((style: EdgeStyle) => {
     const handle = handleRef.current
@@ -698,6 +752,10 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       votePoll,
       closePoll,
       clearPoll,
+      chat,
+      sendChatMessage,
+      editChatMessage,
+      deleteChatMessage,
       edgeStyle,
       setEdgeStyle,
       resizeNode,
@@ -740,6 +798,10 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       votePoll,
       closePoll,
       clearPoll,
+      chat,
+      sendChatMessage,
+      editChatMessage,
+      deleteChatMessage,
       edgeStyle,
       setEdgeStyle,
       resizeNode,

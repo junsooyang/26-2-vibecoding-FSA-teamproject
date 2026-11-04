@@ -28,6 +28,7 @@ import {
 import MembersPanel from './screens/MembersPanel'
 import WbsEditPanel from './screens/WbsEditPanel'
 import CommentsPanel from './screens/CommentsPanel'
+import ChatPanel from './screens/ChatPanel'
 import PersonalSpacePanel from './screens/PersonalSpacePanel'
 import DashboardPanel from './screens/DashboardPanel'
 import TextInputModal from './screens/TextInputModal'
@@ -119,6 +120,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [showDashboard, setShowDashboard] = useState(false)
   // 투표 패널 열림 여부
   const [showPoll, setShowPoll] = useState(false)
+  // 채팅 패널 열림 여부
+  const [showChat, setShowChat] = useState(false)
   // 부가 기능(사진/정렬/개인공간 등) 더보기 펼침 여부
   const [showMore, setShowMore] = useState(false)
   // 여러 줄 텍스트 입력 모달 상태 (null = 닫힘)
@@ -166,6 +169,10 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     votePoll,
     closePoll,
     clearPoll,
+    chat,
+    sendChatMessage,
+    editChatMessage,
+    deleteChatMessage,
     edgeStyle,
     setEdgeStyle,
     resizeNode,
@@ -627,6 +634,15 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         </button>
       </div>
 
+      {/* 오른쪽 상단(나가기 아래) 상시 노출 채팅 버튼 */}
+      <button
+        className={showChat ? 'chat-fab active' : 'chat-fab'}
+        onClick={() => setShowChat((v) => !v)}
+        title="방에 들어온 참여자들끼리 실시간 채팅"
+      >
+        💬 채팅{chat.length > 0 ? ` ${chat.length}` : ''}
+      </button>
+
       <input
         ref={imageInputRef}
         type="file"
@@ -724,6 +740,19 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           onCloseVote={(pollId) => closePoll(pollId)}
           onClear={(pollId) => clearPoll(pollId)}
           onDismiss={() => setShowPoll(false)}
+        />
+      )}
+
+      {showChat && (
+        <ChatPanel
+          roomName={roomName}
+          messages={chat}
+          currentUsername={username}
+          peerCount={peers.length}
+          onSend={(text) => sendChatMessage(text, user.name, username, user.color)}
+          onEdit={(id, text) => editChatMessage(id, text)}
+          onDelete={(id) => deleteChatMessage(id)}
+          onClose={() => setShowChat(false)}
         />
       )}
 

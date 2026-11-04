@@ -160,6 +160,24 @@ export interface EdgeStyle {
   width: number
 }
 
+/** 방 채팅 메시지 (들어온 참여자들끼리 자유롭게 나누는 대화) */
+export interface ChatMessage {
+  /** 고유 id */
+  id: string
+  /** 보낸 사람 표시 이름 */
+  author: string
+  /** 보낸 사람 username (본인 메시지 식별용) */
+  authorUsername: string
+  /** 보낸 사람 색상(이름표 색) */
+  color: string
+  /** 메시지 내용 */
+  text: string
+  /** 보낸 시각(ms) */
+  at: number
+  /** 마지막 수정 시각(ms). 수정된 적이 있으면 표시용 */
+  editedAt?: number
+}
+
 /** 투표 선택지 */
 export interface PollOption {
   id: string
@@ -190,6 +208,8 @@ export interface CollabHandle {
   edges: Y.Map<BoardEdge>
   /** 방 공유 투표 세션들 (키 = poll id, 여러 개 동시 진행 가능) */
   poll: Y.Map<Poll>
+  /** 방 채팅 메시지 목록 (시간순 추가) */
+  chat: Y.Array<ChatMessage>
   /** 방 공유 설정 (키 'edgeStyle' 등) */
   meta: Y.Map<unknown>
   /** 현재 접속한 사용자 정보(커서/이름 공유용) */
@@ -210,6 +230,7 @@ export function connectRoom(roomName: string, user: { name: string; color: strin
   const nodes = doc.getMap<BoardNode>('nodes')
   const edges = doc.getMap<BoardEdge>('edges')
   const poll = doc.getMap<Poll>('poll')
+  const chat = doc.getArray<ChatMessage>('chat')
   const meta = doc.getMap<unknown>('meta')
 
   provider.awareness.setLocalStateField('user', user)
@@ -220,6 +241,7 @@ export function connectRoom(roomName: string, user: { name: string; color: strin
     nodes,
     edges,
     poll,
+    chat,
     meta,
     awareness: provider.awareness,
     destroy: () => {
