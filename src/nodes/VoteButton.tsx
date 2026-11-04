@@ -32,7 +32,7 @@ export default function VoteButton({ nodeId, votes, voted }: Props) {
       </button>
       {count > 0 && (
         <span className="vote-voters" role="tooltip">
-          <span className="vote-voters-title">투표 {count}명</span>
+          <span className="vote-voters-title">좋아요 {count}명</span>
           {voters.map((u) => (
             <span key={u} className="vote-voter">
               @{u}
