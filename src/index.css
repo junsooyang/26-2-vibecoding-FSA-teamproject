@@ -1479,9 +1479,13 @@ button.danger:hover {
   background: #4f46e5;
 }
 
-/* 열려 있을 때: 색 강조 + 패널(340px) 왼쪽으로 옮겨 가리지 않게 */
+/* 채팅이 열려 있을 때: 색 강조 */
 .chat-fab.active {
   background: #4338ca;
+}
+
+/* 우측 사이드 패널(340px)이 열려 있으면 그 왼쪽으로 옮겨 가리지 않게 */
+.chat-fab.shifted {
   right: 356px;
 }
 

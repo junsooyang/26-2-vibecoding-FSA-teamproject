@@ -682,7 +682,16 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
 
       {/* 오른쪽 상단(나가기 아래) 상시 노출 채팅 버튼 */}
       <button
-        className={showChat ? 'chat-fab active' : 'chat-fab'}
+        className={[
+          'chat-fab',
+          showChat ? 'active' : '',
+          // 우측 사이드 패널(채팅/캘린더/대시보드/투표/댓글)이 열려 있으면 가리지 않게 왼쪽으로 비켜남
+          showChat || showCalendar || showDashboard || showPoll || commentNodeId
+            ? 'shifted'
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
         onClick={() => setShowChat((v) => !v)}
         title="방에 들어온 참여자들끼리 실시간 채팅"
       >
