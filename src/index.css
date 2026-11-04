@@ -2156,8 +2156,13 @@ button.danger:hover {
 .wbs-title.clamped {
   display: -webkit-box;
   -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  flex: 0 0 auto; /* flex 안에서도 줄수 제한이 먹도록 */
+  max-height: calc(1.4em * 3); /* webkit-box 미지원 환경 fallback */
 }
 
 /* 접기/펼치기 토글 버튼 */
@@ -2181,4 +2186,27 @@ button.danger:hover {
 /* 스티커 노드가 지정 높이를 쓸 때 내부가 넘치지 않도록 */
 .sticky-node {
   overflow: hidden;
+}
+
+/* ---------- 연결선(엣지) 선택/호버 강조 ---------- */
+/* 호버 시: 살짝 굵게 + 커서 */
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke-width: 5;
+  cursor: pointer;
+  filter: drop-shadow(0 0 2px rgba(99, 102, 241, 0.5));
+}
+
+/* 선택됨: 눈에 띄게 굵고 주황 점선 + 글로우 */
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:focus .react-flow__edge-path,
+.react-flow__edge:focus-visible .react-flow__edge-path {
+  stroke: #f59e0b !important;
+  stroke-width: 5 !important;
+  stroke-dasharray: 8 4;
+  filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.7));
+}
+
+/* 선택된 엣지의 클릭 판정 영역(투명 선)도 넓혀 잘 선택되게 */
+.react-flow__edge .react-flow__edge-interaction {
+  stroke-width: 20;
 }

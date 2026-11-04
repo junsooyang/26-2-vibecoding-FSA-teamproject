@@ -16,8 +16,8 @@ export const STICKY_COLORS: Record<StickyColor, { bg: string; border: string }> 
 
 const COLOR_ORDER: StickyColor[] = ['yellow', 'pink', 'blue', 'green']
 
-/** 이 길이를 넘으면 접기/펼치기 버튼을 보여준다. */
-const LONG_TEXT = 80
+/** 이 길이를 넘으면 접기/펼치기 버튼을 보여주고, 기본적으로 접어서 … 로 표시한다. */
+const LONG_TEXT = 40
 
 /**
  * 스티커(포스트잇) 메모 커스텀 노드.
@@ -32,7 +32,8 @@ export default function StickyNode({ id, data, selected }: NodeProps) {
   const voted = !!me && (d.votes?.includes(me) ?? false)
   const text = d.text || ''
   const isLong = text.length > LONG_TEXT
-  const collapsed = d.collapsed ?? false
+  // 명시적 설정이 있으면 그 값, 없으면 긴 글은 기본 접힘(…)
+  const collapsed = d.collapsed ?? isLong
 
   const pickColor = (e: React.MouseEvent, color: StickyColor) => {
     e.stopPropagation()

@@ -48,8 +48,9 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
   const progress = Math.max(0, Math.min(100, Number(d.progress) || 0))
   const done = d.status === 'done'
   const label = d.label || ''
-  const isLong = label.length > 40
-  const collapsed = d.collapsed ?? false
+  const isLong = label.length > 24
+  // 명시적 설정이 있으면 그 값, 없으면 긴 제목은 기본 접힘(…)
+  const collapsed = d.collapsed ?? isLong
   const dstate = dueState(d.due, done)
   const checklist = d.checklist ?? []
   const checklistDone = checklist.filter((c) => c.done).length
