@@ -1078,6 +1078,248 @@ button.danger:hover {
   background: #fff;
 }
 
+/* ---------- 캘린더 패널 ---------- */
+.cal-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.cal-title {
+  font-size: 15px;
+  min-width: 96px;
+  text-align: center;
+}
+
+.cal-today-btn {
+  margin-left: auto;
+  padding: 4px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  padding: 10px 12px;
+}
+
+.cal-wd {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b7280;
+  padding: 2px 0;
+}
+
+.cal-wd.sun { color: #dc2626; }
+.cal-wd.sat { color: #2563eb; }
+
+.cal-cell {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #f9fafb;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 4px;
+  font-size: 12px;
+}
+
+.cal-cell.empty {
+  background: transparent;
+  cursor: default;
+}
+
+.cal-cell:hover:not(.empty) {
+  background: #eef2ff;
+}
+
+.cal-cell.today {
+  border-color: #a5b4fc;
+}
+
+.cal-cell.selected {
+  background: #6366f1;
+  color: #fff;
+  border-color: #6366f1;
+}
+
+.cal-day {
+  line-height: 1;
+}
+
+.cal-dot {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cal-cell.selected .cal-dot {
+  background: #fff;
+  color: #6366f1;
+}
+
+.cal-day-head {
+  padding: 10px 16px 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #374151;
+  border-top: 1px solid #eef0f3;
+}
+
+.cal-event-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cal-event {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.cal-event-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.cal-event-text {
+  font-size: 13px;
+  color: #1f2937;
+  word-break: break-word;
+}
+
+.cal-event.done .cal-event-text {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+.cal-event-actions {
+  display: none;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.cal-event:hover .cal-event-actions {
+  display: inline-flex;
+}
+
+.cal-link {
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.cal-link:hover {
+  text-decoration: underline;
+}
+
+.cal-link.danger-text {
+  color: #dc2626;
+}
+
+.cal-event-edit {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.cal-event-edit input {
+  flex: 1;
+  padding: 6px 9px;
+  border: 1px solid #c7cbd1;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.cal-event-edit button {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #6366f1;
+  color: #fff;
+}
+
+.cal-event-edit button.ghost {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.cal-event-edit button:disabled {
+  background: #c7d2fe;
+  cursor: not-allowed;
+}
+
+.cal-add-form {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.cal-add-form input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.cal-add-form button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #6366f1;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cal-add-form button:disabled {
+  background: #c7d2fe;
+  cursor: not-allowed;
+}
+
 /* ---------- 개인 공간 패널 ---------- */
 .personal-body {
   flex: 1;

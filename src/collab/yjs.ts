@@ -178,6 +178,22 @@ export interface ChatMessage {
   editedAt?: number
 }
 
+/** 방 공유 캘린더 일정 */
+export interface CalendarEvent {
+  /** 고유 id */
+  id: string
+  /** 날짜 (YYYY-MM-DD) */
+  date: string
+  /** 일정 내용 */
+  text: string
+  /** 완료 체크 여부 */
+  done: boolean
+  /** 만든 사람 username */
+  createdBy: string
+  /** 만든 시각(ms) */
+  createdAt: number
+}
+
 /** 투표 선택지 */
 export interface PollOption {
   id: string
@@ -210,6 +226,8 @@ export interface CollabHandle {
   poll: Y.Map<Poll>
   /** 방 채팅 메시지 목록 (시간순 추가) */
   chat: Y.Array<ChatMessage>
+  /** 방 공유 캘린더 일정들 (키 = event id) */
+  calendar: Y.Map<CalendarEvent>
   /** 방 공유 설정 (키 'edgeStyle' 등) */
   meta: Y.Map<unknown>
   /** 현재 접속한 사용자 정보(커서/이름 공유용) */
@@ -231,6 +249,7 @@ export function connectRoom(roomName: string, user: { name: string; color: strin
   const edges = doc.getMap<BoardEdge>('edges')
   const poll = doc.getMap<Poll>('poll')
   const chat = doc.getArray<ChatMessage>('chat')
+  const calendar = doc.getMap<CalendarEvent>('calendar')
   const meta = doc.getMap<unknown>('meta')
 
   provider.awareness.setLocalStateField('user', user)
@@ -242,6 +261,7 @@ export function connectRoom(roomName: string, user: { name: string; color: strin
     edges,
     poll,
     chat,
+    calendar,
     meta,
     awareness: provider.awareness,
     destroy: () => {

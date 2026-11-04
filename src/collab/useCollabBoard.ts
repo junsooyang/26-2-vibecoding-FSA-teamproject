@@ -13,6 +13,7 @@ import {
   type Attachment,
   type BoardEdge,
   type BoardNode,
+  type CalendarEvent,
   type ChatMessage,
   type ChecklistItem,
   type CollabHandle,
@@ -57,6 +58,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
   const [cursors, setCursors] = useState<RemoteCursor[]>([])
   const [polls, setPolls] = useState<Poll[]>([])
   const [chat, setChat] = useState<ChatMessage[]>([])
+  const [calendar, setCalendar] = useState<CalendarEvent[]>([])
   const [edgeStyle, setEdgeStyleState] = useState<EdgeStyle>({ color: '#6366f1', width: 2.5 })
   const [connected, setConnected] = useState(false)
 
@@ -81,6 +83,15 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
           .toArray()
           .filter((m): m is ChatMessage => !!m && typeof (m as ChatMessage).id === 'string'),
       )
+    const syncCalendar = () =>
+      setCalendar(
+        Array.from(handle.calendar.values())
+          .filter(
+            (e): e is CalendarEvent =>
+              !!e && typeof (e as CalendarEvent).id === 'string' && typeof (e as CalendarEvent).date === 'string',
+          )
+          .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt),
+      )
     const syncMeta = () => {
       const es = handle.meta.get('edgeStyle') as Partial<EdgeStyle> | undefined
       if (es && typeof es.color === 'string' && typeof es.width === 'number') {
@@ -92,12 +103,14 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     handle.edges.observe(syncEdges)
     handle.poll.observe(syncPoll)
     handle.chat.observe(syncChat)
+    handle.calendar.observe(syncCalendar)
     handle.meta.observe(syncMeta)
     // 초기 상태 반영
     syncNodes()
     syncEdges()
     syncPoll()
     syncChat()
+    syncCalendar()
     syncMeta()
 
     handle.provider.on('status', (e: { status: string }) => {
@@ -138,6 +151,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       handle.edges.unobserve(syncEdges)
       handle.poll.unobserve(syncPoll)
       handle.chat.unobserve(syncChat)
+      handle.calendar.unobserve(syncCalendar)
       handle.meta.unobserve(syncMeta)
       handle.awareness.off('change', syncAwareness)
       handle.destroy()
@@ -682,6 +696,49 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     handle.chat.delete(idx, 1)
   }, [])
 
+  /** 캘린더 일정 추가 (특정 날짜에) */
+  const addCalendarEvent = useCallback((date: string, text: string, createdBy: string) => {
+    const handle = handleRef.current
+    const trimmed = text.trim()
+    if (!handle || !date || !trimmed) return
+    const id = `cal-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+    const event: CalendarEvent = {
+      id,
+      date,
+      text: trimmed,
+      done: false,
+      createdBy,
+      createdAt: Date.now(),
+    }
+    handle.calendar.set(id, event)
+  }, [])
+
+  /** 캘린더 일정 완료 체크 토글 */
+  const toggleCalendarEvent = useCallback((id: string) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.calendar.get(id)
+    if (!existing) return
+    handle.calendar.set(id, { ...existing, done: !existing.done })
+  }, [])
+
+  /** 캘린더 일정 내용 수정 */
+  const editCalendarEvent = useCallback((id: string, text: string) => {
+    const handle = handleRef.current
+    const trimmed = text.trim()
+    if (!handle || !trimmed) return
+    const existing = handle.calendar.get(id)
+    if (!existing) return
+    handle.calendar.set(id, { ...existing, text: trimmed })
+  }, [])
+
+  /** 캘린더 일정 삭제 */
+  const deleteCalendarEvent = useCallback((id: string) => {
+    const handle = handleRef.current
+    if (!handle) return
+    handle.calendar.delete(id)
+  }, [])
+
   /** 공유 연결선 스타일 설정 (모든 참여자에게 반영) */
   const setEdgeStyle = useCallback((style: EdgeStyle) => {
     const handle = handleRef.current
@@ -756,6 +813,11 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       sendChatMessage,
       editChatMessage,
       deleteChatMessage,
+      calendar,
+      addCalendarEvent,
+      toggleCalendarEvent,
+      editCalendarEvent,
+      deleteCalendarEvent,
       edgeStyle,
       setEdgeStyle,
       resizeNode,
@@ -802,6 +864,11 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       sendChatMessage,
       editChatMessage,
       deleteChatMessage,
+      calendar,
+      addCalendarEvent,
+      toggleCalendarEvent,
+      editCalendarEvent,
+      deleteCalendarEvent,
       edgeStyle,
       setEdgeStyle,
       resizeNode,

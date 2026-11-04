@@ -29,6 +29,7 @@ import MembersPanel from './screens/MembersPanel'
 import WbsEditPanel from './screens/WbsEditPanel'
 import CommentsPanel from './screens/CommentsPanel'
 import ChatPanel from './screens/ChatPanel'
+import CalendarPanel from './screens/CalendarPanel'
 import PersonalSpacePanel from './screens/PersonalSpacePanel'
 import DashboardPanel from './screens/DashboardPanel'
 import TextInputModal from './screens/TextInputModal'
@@ -122,6 +123,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [showPoll, setShowPoll] = useState(false)
   // 채팅 패널 열림 여부
   const [showChat, setShowChat] = useState(false)
+  // 캘린더 패널 열림 여부
+  const [showCalendar, setShowCalendar] = useState(false)
   // 부가 기능(사진/정렬/개인공간 등) 더보기 펼침 여부
   const [showMore, setShowMore] = useState(false)
   // 공유(이미지/PDF 저장) 메뉴 펼침 여부
@@ -175,6 +178,11 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     sendChatMessage,
     editChatMessage,
     deleteChatMessage,
+    calendar,
+    addCalendarEvent,
+    toggleCalendarEvent,
+    editCalendarEvent,
+    deleteCalendarEvent,
     edgeStyle,
     setEdgeStyle,
     resizeNode,
@@ -605,6 +613,12 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
               <button onClick={() => setShowDashboard(true)} title="팀원별 현황 / 전체 진행률">
                 📊 대시보드
               </button>
+              <button
+                onClick={() => setShowCalendar((v) => !v)}
+                title="팀 일정 캘린더 (날짜별 일정 추가/체크)"
+              >
+                🗓️ 캘린더{calendar.length > 0 ? ` (${calendar.length})` : ''}
+              </button>
               <button onClick={() => setShowPoll(true)} title="질문/선택지로 팀 투표 진행">
                 🗳️ 투표
                 {polls.some((p) => p && !p.closed && (p.deadline === 0 || Date.now() < p.deadline))
@@ -785,6 +799,18 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           onEdit={(id, text) => editChatMessage(id, text)}
           onDelete={(id) => deleteChatMessage(id)}
           onClose={() => setShowChat(false)}
+        />
+      )}
+
+      {showCalendar && (
+        <CalendarPanel
+          roomName={roomName}
+          events={calendar}
+          onAdd={(date, text) => addCalendarEvent(date, text, username)}
+          onToggle={(id) => toggleCalendarEvent(id)}
+          onEdit={(id, text) => editCalendarEvent(id, text)}
+          onDelete={(id) => deleteCalendarEvent(id)}
+          onClose={() => setShowCalendar(false)}
         />
       )}
 
