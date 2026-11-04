@@ -256,12 +256,14 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const handlePaneDoubleClick = useCallback(
     (event: React.MouseEvent) => {
       const target = event.target as HTMLElement
-      // 빈 영역(pane / 배경 패턴)에서만 동작. 노드/버튼/핸들 위 더블클릭은 무시.
-      const onEmptyArea =
-        target.classList.contains('react-flow__pane') ||
-        target.classList.contains('react-flow__background') ||
-        target.closest('.react-flow__background') !== null
-      if (!onEmptyArea) return
+      // 노드/핸들/UI 요소 위 더블클릭은 무시하고, 그 외 빈 캔버스에서만 동작.
+      if (
+        target.closest(
+          '.react-flow__node, .react-flow__handle, .react-flow__controls, .react-flow__minimap, .react-flow__edge, button, input, textarea, a, .side-panel, .left-dock, .panel, .empty-card',
+        )
+      ) {
+        return
+      }
       const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
       setTextModal({
         title: '새 아이디어',

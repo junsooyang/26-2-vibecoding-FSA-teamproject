@@ -26,8 +26,18 @@ export interface Member {
   id: number
   username: string
   name: string
-  role: 'owner' | 'member'
+  role: 'owner' | 'member' | 'invited'
   joined_at: number
+}
+
+/** 내가 초대받은(수락 대기 중인) 방 */
+export interface Invite {
+  id: number
+  slug: string
+  name: string
+  owner_id: number
+  created_at: number
+  owner_name: string
 }
 
 /** 개인 공간 파일 (data URL 로 서버에 저장) */
@@ -95,6 +105,12 @@ export const api = {
   removeMember: (slug: string, userId: number) =>
     request<{ members: Member[] }>('DELETE', `/rooms/${slug}/members/${userId}`),
   deleteRoom: (slug: string) => request<{ ok: true }>('DELETE', `/rooms/${slug}`),
+
+  // 초대 수락/거절
+  listInvites: () => request<{ invites: Invite[] }>('GET', '/rooms/invites/list'),
+  acceptInvite: (slug: string) =>
+    request<{ ok: true; room: Room }>('POST', `/rooms/${slug}/accept`),
+  declineInvite: (slug: string) => request<{ ok: true }>('POST', `/rooms/${slug}/decline`),
 
   // 개인 공간 (서버 저장 — 어느 기기에서든 동일하게 보임)
   getPersonal: (slug: string) =>

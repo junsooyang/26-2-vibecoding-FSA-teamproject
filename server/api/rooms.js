@@ -25,20 +25,33 @@ const insertMember = db.prepare(
 )
 const findMember = db.prepare('SELECT * FROM room_members WHERE room_id = ? AND user_id = ?')
 const deleteMember = db.prepare('DELETE FROM room_members WHERE room_id = ? AND user_id = ?')
+const updateMemberRole = db.prepare(
+  'UPDATE room_members SET role = ?, joined_at = ? WHERE room_id = ? AND user_id = ?',
+)
 const deleteRoom = db.prepare('DELETE FROM rooms WHERE id = ?')
 const findUserByUsername = db.prepare('SELECT id, username, name FROM users WHERE username = ?')
 
-// 내가 속한 방 목록 (역할 포함)
+// 내가 "참여 중"인 방 목록 (초대 대기 invited 는 제외)
 const listMyRooms = db.prepare(`
   SELECT r.id, r.slug, r.name, r.owner_id, r.created_at, m.role,
-         (SELECT COUNT(*) FROM room_members WHERE room_id = r.id) AS member_count
+         (SELECT COUNT(*) FROM room_members WHERE room_id = r.id AND role != 'invited') AS member_count
   FROM rooms r
   JOIN room_members m ON m.room_id = r.id
-  WHERE m.user_id = ?
+  WHERE m.user_id = ? AND m.role != 'invited'
   ORDER BY r.created_at DESC
 `)
 
-// 방의 멤버 목록
+// 내가 "초대 받은(대기 중)" 방 목록
+const listMyInvites = db.prepare(`
+  SELECT r.id, r.slug, r.name, r.owner_id, r.created_at,
+         (SELECT u.name FROM users u WHERE u.id = r.owner_id) AS owner_name
+  FROM rooms r
+  JOIN room_members m ON m.room_id = r.id
+  WHERE m.user_id = ? AND m.role = 'invited'
+  ORDER BY r.created_at DESC
+`)
+
+// 방의 멤버 목록 (초대 대기 invited 포함 — owner 가 현황을 볼 수 있게)
 const listMembers = db.prepare(`
   SELECT u.id, u.username, u.name, m.role, m.joined_at
   FROM room_members m
@@ -73,21 +86,57 @@ router.post('/', (req, res) => {
   return res.status(201).json({ room: findRoomById.get(roomId) })
 })
 
-// 내가 속한 방 목록
+// 내가 참여 중인 방 목록
 router.get('/', (req, res) => {
   res.json({ rooms: listMyRooms.all(req.user.id) })
 })
 
-/** 방 접근 권한 확인 미들웨어: 멤버여야 통과, req.room / req.membership 세팅 */
+// 내가 초대받은(대기 중) 방 목록
+router.get('/invites/list', (req, res) => {
+  res.json({ invites: listMyInvites.all(req.user.id) })
+})
+
+/**
+ * 방 접근 권한 확인 미들웨어: 참여 중(owner/member)이어야 통과.
+ * 초대 대기(invited) 상태면 아직 입장 불가 → 수락이 필요하다.
+ */
 function loadRoomMembership(req, res, next) {
   const room = findRoomBySlug.get(req.params.slug)
   if (!room) return res.status(404).json({ error: '존재하지 않는 방입니다.' })
   const membership = findMember.get(room.id, req.user.id)
   if (!membership) return res.status(403).json({ error: '이 방에 접근할 권한이 없습니다.' })
+  if (membership.role === 'invited') {
+    return res.status(403).json({ error: '초대를 수락해야 입장할 수 있습니다.' })
+  }
   req.room = room
   req.membership = membership
   next()
 }
+
+/** 초대 수락/거절용: invited 상태의 멤버십을 찾아 req.room / req.membership 세팅 */
+function loadInvite(req, res, next) {
+  const room = findRoomBySlug.get(req.params.slug)
+  if (!room) return res.status(404).json({ error: '존재하지 않는 방입니다.' })
+  const membership = findMember.get(room.id, req.user.id)
+  if (!membership || membership.role !== 'invited') {
+    return res.status(404).json({ error: '대기 중인 초대가 없습니다.' })
+  }
+  req.room = room
+  req.membership = membership
+  next()
+}
+
+// 초대 수락 → invited 를 member 로 승격
+router.post('/:slug/accept', loadInvite, (req, res) => {
+  updateMemberRole.run('member', Date.now(), req.room.id, req.user.id)
+  return res.json({ ok: true, room: req.room })
+})
+
+// 초대 거절 → 멤버십 삭제
+router.post('/:slug/decline', loadInvite, (req, res) => {
+  deleteMember.run(req.room.id, req.user.id)
+  return res.json({ ok: true })
+})
 
 // 방 상세 (멤버 목록 포함)
 router.get('/:slug', loadRoomMembership, (req, res) => {
@@ -110,10 +159,15 @@ router.post('/:slug/members', loadRoomMembership, (req, res) => {
   if (!invitee) {
     return res.status(404).json({ error: '해당 아이디의 가입된 사용자를 찾을 수 없습니다.' })
   }
-  if (findMember.get(req.room.id, invitee.id)) {
+  const existing = findMember.get(req.room.id, invitee.id)
+  if (existing) {
+    if (existing.role === 'invited') {
+      return res.status(409).json({ error: '이미 초대한 사용자입니다. (수락 대기 중)' })
+    }
     return res.status(409).json({ error: '이미 방에 속한 사용자입니다.' })
   }
-  insertMember.run(req.room.id, invitee.id, 'member', Date.now())
+  // 바로 멤버가 아니라 "초대 대기(invited)" 상태로 추가 → 당사자가 수락해야 입장 가능
+  insertMember.run(req.room.id, invitee.id, 'invited', Date.now())
   return res.status(201).json({ members: listMembers.all(req.room.id) })
 })
 

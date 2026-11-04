@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type Room, type User } from '../api/client'
+import { api, type Invite, type Room, type User } from '../api/client'
 
 interface Props {
   user: User
@@ -9,6 +9,7 @@ interface Props {
 
 export default function RoomListScreen({ user, onEnterRoom, onLogout }: Props) {
   const [rooms, setRooms] = useState<Room[]>([])
+  const [invites, setInvites] = useState<Invite[]>([])
   const [newRoomName, setNewRoomName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -16,8 +17,9 @@ export default function RoomListScreen({ user, onEnterRoom, onLogout }: Props) {
 
   const loadRooms = async () => {
     try {
-      const res = await api.listRooms()
-      setRooms(res.rooms)
+      const [roomsRes, invitesRes] = await Promise.all([api.listRooms(), api.listInvites()])
+      setRooms(roomsRes.rooms)
+      setInvites(invitesRes.invites)
     } catch (err) {
       setError(err instanceof Error ? err.message : '방 목록을 불러오지 못했습니다.')
     } finally {
@@ -28,6 +30,27 @@ export default function RoomListScreen({ user, onEnterRoom, onLogout }: Props) {
   useEffect(() => {
     loadRooms()
   }, [])
+
+  const acceptInvite = async (invite: Invite) => {
+    setError(null)
+    try {
+      const res = await api.acceptInvite(invite.slug)
+      await loadRooms()
+      onEnterRoom(res.room)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '초대 수락에 실패했습니다.')
+    }
+  }
+
+  const declineInvite = async (invite: Invite) => {
+    setError(null)
+    try {
+      await api.declineInvite(invite.slug)
+      await loadRooms()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '초대 거절에 실패했습니다.')
+    }
+  }
 
   const createRoom = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -71,6 +94,30 @@ export default function RoomListScreen({ user, onEnterRoom, onLogout }: Props) {
         </form>
 
         {error && <p className="error">{error}</p>}
+
+        {invites.length > 0 && (
+          <div className="invite-box">
+            <div className="invite-title">📨 받은 초대 {invites.length}건</div>
+            <ul className="invite-list">
+              {invites.map((inv) => (
+                <li key={inv.id} className="invite-item">
+                  <div className="invite-info">
+                    <span className="room-name">{inv.name}</span>
+                    <span className="invite-from">{inv.owner_name}님의 초대</span>
+                  </div>
+                  <div className="invite-actions">
+                    <button type="button" className="invite-accept" onClick={() => acceptInvite(inv)}>
+                      수락
+                    </button>
+                    <button type="button" className="ghost" onClick={() => declineInvite(inv)}>
+                      거절
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {loading ? (
           <p className="tip">불러오는 중...</p>

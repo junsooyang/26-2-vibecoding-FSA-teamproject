@@ -90,12 +90,20 @@ export default function MembersPanel({ slug, onClose }: Props) {
                   <span className="member-email">@{m.username}</span>
                 </span>
                 <span className="member-actions">
-                  <span className={m.role === 'owner' ? 'role owner' : 'role member'}>
-                    {m.role === 'owner' ? '팀장' : '참여자'}
+                  <span
+                    className={
+                      m.role === 'owner'
+                        ? 'role owner'
+                        : m.role === 'invited'
+                          ? 'role invited'
+                          : 'role member'
+                    }
+                  >
+                    {m.role === 'owner' ? '팀장' : m.role === 'invited' ? '초대 대기중' : '참여자'}
                   </span>
                   {myRole === 'owner' && m.role !== 'owner' && (
                     <button type="button" className="danger" onClick={() => remove(m.id)}>
-                      내보내기
+                      {m.role === 'invited' ? '초대 취소' : '내보내기'}
                     </button>
                   )}
                 </span>
