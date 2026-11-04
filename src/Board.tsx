@@ -512,10 +512,10 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           >
             → 작업으로{promotableSelected.length > 1 ? ` (${promotableSelected.length})` : ''}
           </button>
-          <button onClick={() => applyLayout('TB')} title="노드가 가로로 펼쳐지게 정렬">
+          <button onClick={() => applyLayout('LR')} title="노드가 가로로 펼쳐지게 정렬">
             가로 정렬 →
           </button>
-          <button onClick={() => applyLayout('LR')} title="노드가 세로로 쌓이게 정렬">
+          <button onClick={() => applyLayout('TB')} title="노드가 세로로 쌓이게 정렬">
             세로 정렬 ↓
           </button>
         </span>
