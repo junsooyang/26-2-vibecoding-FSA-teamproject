@@ -8,9 +8,11 @@ import {
   useReactFlow,
   getNodesBounds,
   getViewportForBounds,
+  MarkerType,
   type NodeMouseHandler,
   type NodeTypes,
   type OnNodeDrag,
+  type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useCollabBoard, type AwarenessUser } from './collab/useCollabBoard'
@@ -62,6 +64,39 @@ function nodeTitleOf(node: BoardNode): string {
 /** 업로드 이미지 최대 크기(3MB). data URL 로 Yjs 에 저장되므로 과도한 용량 방지. */
 const MAX_IMAGE_SIZE = 3 * 1024 * 1024
 
+/** 연결선(엣지) 개인 표시 설정 — 내 화면에만 적용되고 localStorage 에 저장된다. */
+interface EdgeStyle {
+  color: string
+  width: number
+}
+const DEFAULT_EDGE_STYLE: EdgeStyle = { color: '#6366f1', width: 2.5 }
+const EDGE_COLORS = ['#6366f1', '#111827', '#ef4444', '#f59e0b', '#22c55e', '#06b6d4', '#ec4899']
+const EDGE_WIDTHS: { label: string; value: number }[] = [
+  { label: '가늘게', value: 1.5 },
+  { label: '보통', value: 2.5 },
+  { label: '굵게', value: 4 },
+  { label: '매우 굵게', value: 6 },
+]
+
+function edgeStyleKey(room: string) {
+  return `fsa_edgestyle:${room}`
+}
+function loadEdgeStyle(room: string): EdgeStyle {
+  try {
+    const raw = localStorage.getItem(edgeStyleKey(room))
+    if (raw) {
+      const p = JSON.parse(raw) as Partial<EdgeStyle>
+      return {
+        color: typeof p.color === 'string' ? p.color : DEFAULT_EDGE_STYLE.color,
+        width: typeof p.width === 'number' ? p.width : DEFAULT_EDGE_STYLE.width,
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return DEFAULT_EDGE_STYLE
+}
+
 /** 두 노드가 화면상에서 겹치는지 판정 (중심점이 대상 노드 박스 안에 있는지) */
 function overlaps(a: BoardNode, b: BoardNode): boolean {
   const aw = a.measured?.width ?? 200
@@ -99,6 +134,9 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [personalCollapsed, setPersonalCollapsed] = useState(true)
   // 시작 안내 카드를 사용자가 닫았는지
   const [guideDismissed, setGuideDismissed] = useState(false)
+  // 연결선(엣지) 개인 표시 설정 + 설정 팝오버 열림 여부
+  const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>(() => loadEdgeStyle(room))
+  const [showEdgeStyle, setShowEdgeStyle] = useState(false)
   // 대시보드 패널 열림 여부
   const [showDashboard, setShowDashboard] = useState(false)
   // 투표 패널 열림 여부
@@ -239,6 +277,26 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       }),
     [nodes, dropTargetId, seqById],
   )
+
+  // 내 설정(색상/굵기)을 모든 연결선에 적용 + 화살표 표시 (내 화면에만 반영)
+  const displayEdges = useMemo<Edge[]>(
+    () =>
+      edges.map((e) => ({
+        ...e,
+        style: { ...e.style, stroke: edgeStyle.color, strokeWidth: edgeStyle.width },
+        markerEnd: { type: MarkerType.ArrowClosed, color: edgeStyle.color },
+      })),
+    [edges, edgeStyle],
+  )
+
+  // 엣지 설정 변경 시 localStorage 저장 (방별 개인 설정)
+  useEffect(() => {
+    try {
+      localStorage.setItem(edgeStyleKey(room), JSON.stringify(edgeStyle))
+    } catch {
+      // ignore
+    }
+  }, [edgeStyle, room])
 
   // 편집 중인 WBS 노드의 현재 데이터
   const editingNode = editingWbsId ? nodes.find((n) => n.id === editingWbsId) : undefined
@@ -554,6 +612,9 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
               <button onClick={handleAlignGrid} title="선택 노드(없으면 전체)를 격자로 줄맞춤">
                 격자 정렬 ▦
               </button>
+              <button onClick={() => setShowEdgeStyle((v) => !v)} title="연결선 색상/굵기 설정">
+                🔗 선 스타일
+              </button>
               <button onClick={() => setShowMembers(true)}>멤버 관리</button>
             </span>
           )}
@@ -580,6 +641,61 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           onSubmit={textModal.onSubmit}
           onClose={() => setTextModal(null)}
         />
+      )}
+
+      {showEdgeStyle && (
+        <div className="edge-style-pop" onClick={(e) => e.stopPropagation()}>
+          <div className="edge-style-head">
+            <strong>🔗 연결선 스타일</strong>
+            <button type="button" className="ghost" onClick={() => setShowEdgeStyle(false)}>
+              닫기
+            </button>
+          </div>
+          <p className="edge-style-note">내 화면에만 적용돼요 (기기별 저장)</p>
+
+          <div className="field-label">색상</div>
+          <div className="edge-color-row">
+            {EDGE_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={edgeStyle.color === c ? 'edge-color active' : 'edge-color'}
+                style={{ background: c }}
+                onClick={() => setEdgeStyle((s) => ({ ...s, color: c }))}
+                title={c}
+              />
+            ))}
+            <input
+              type="color"
+              className="edge-color-custom"
+              value={edgeStyle.color}
+              onChange={(e) => setEdgeStyle((s) => ({ ...s, color: e.target.value }))}
+              title="직접 선택"
+            />
+          </div>
+
+          <div className="field-label">굵기</div>
+          <div className="edge-width-row">
+            {EDGE_WIDTHS.map((w) => (
+              <button
+                key={w.value}
+                type="button"
+                className={edgeStyle.width === w.value ? 'edge-width active' : 'edge-width'}
+                onClick={() => setEdgeStyle((s) => ({ ...s, width: w.value }))}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="ghost edge-reset"
+            onClick={() => setEdgeStyle(DEFAULT_EDGE_STYLE)}
+          >
+            기본값으로
+          </button>
+        </div>
       )}
 
       {showMembers && <MembersPanel slug={room} onClose={() => setShowMembers(false)} />}
@@ -636,7 +752,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
 
       <ReactFlow
         nodes={displayNodes}
-        edges={edges}
+        edges={displayEdges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}

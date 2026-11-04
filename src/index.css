@@ -2040,3 +2040,93 @@ button.danger:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ---------- 연결선 스타일 설정 팝오버 ---------- */
+.edge-style-pop {
+  position: fixed;
+  top: 56px;
+  right: 16px;
+  z-index: 120;
+  width: 260px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  padding: 14px 16px;
+}
+
+.edge-style-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.edge-style-head strong {
+  font-size: 14px;
+}
+
+.edge-style-note {
+  margin: 0 0 12px;
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.edge-color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.edge-color {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px #e5e7eb;
+  cursor: pointer;
+}
+
+.edge-color.active {
+  box-shadow: 0 0 0 2px #1f2937;
+}
+
+.edge-color-custom {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  background: none;
+}
+
+.edge-width-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.edge-width {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #f9fafb;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.edge-width.active {
+  background: #eef2ff;
+  border-color: #6366f1;
+  color: #4338ca;
+}
+
+.edge-reset {
+  width: 100%;
+  font-size: 12px;
+}
