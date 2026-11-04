@@ -2210,3 +2210,27 @@ button.danger:hover {
 .react-flow__edge .react-flow__edge-interaction {
   stroke-width: 20;
 }
+
+/* ---------- 메모 제목 ---------- */
+/* 입력 모달의 제목 칸 */
+.text-input-title {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+}
+
+/* 스티커 노드의 제목 표시 */
+.sticky-title {
+  font-weight: 800;
+  font-size: 14px;
+  color: #1f2937;
+  margin-bottom: 4px;
+  word-break: break-word;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  padding-bottom: 4px;
+}

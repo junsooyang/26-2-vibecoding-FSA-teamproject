@@ -87,6 +87,8 @@ export default function StickyNode({ id, data, selected }: NodeProps) {
         {d.seq != null && <span className="node-seq" title="생성 순서">#{d.seq}</span>}
       </div>
 
+      {d.title && <div className="sticky-title">{d.title}</div>}
+
       <div className={collapsed ? 'sticky-text clamped' : 'sticky-text'}>
         {text || '(빈 메모 — 더블클릭해서 입력)'}
       </div>

@@ -123,10 +123,12 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [showMore, setShowMore] = useState(false)
   // 여러 줄 텍스트 입력 모달 상태 (null = 닫힘)
   const [textModal, setTextModal] = useState<{
-    title: string
+    heading: string
     initial: string
     confirmLabel: string
-    onSubmit: (text: string) => void
+    withTitle?: boolean
+    initialTitle?: string
+    onSubmit: (text: string, title?: string) => void
   } | null>(null)
   const {
     nodes,
@@ -320,7 +322,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       }
       const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
       setTextModal({
-        title: '새 아이디어',
+        heading: '새 아이디어',
         initial: '',
         confirmLabel: '추가',
         onSubmit: (text) => {
@@ -341,15 +343,17 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       }
       if (isStickyData(node.data)) {
         setTextModal({
-          title: '메모 수정',
+          heading: '메모 수정',
           initial: node.data.text,
           confirmLabel: '저장',
-          onSubmit: (text) => updateStickyNode(node.id, { text }),
+          withTitle: true,
+          initialTitle: node.data.title ?? '',
+          onSubmit: (text, title) => updateStickyNode(node.id, { text, title: title?.trim() || '' }),
         })
         return
       }
       setTextModal({
-        title: '아이디어 수정',
+        heading: '아이디어 수정',
         initial: String(node.data.label ?? ''),
         confirmLabel: '저장',
         onSubmit: (text) => renameNode(node.id, text),
@@ -371,18 +375,20 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   // 화면 중앙 근처에 스티커 메모 추가 (여러 줄 입력 모달)
   const handleAddSticky = useCallback(() => {
     setTextModal({
-      title: '새 메모',
+      heading: '새 메모',
       initial: '',
       confirmLabel: '추가',
-      onSubmit: (text) => {
+      withTitle: true,
+      onSubmit: (text, title) => {
         const t = text.trim()
-        if (!t) return
+        const ti = title?.trim() ?? ''
+        if (!t && !ti) return
         const position = screenToFlowPosition({
           x: window.innerWidth / 2,
           y: window.innerHeight / 2,
         })
         const id = addStickyNode(position)
-        if (id) updateStickyNode(id, { text: t })
+        if (id) updateStickyNode(id, { text: t, title: ti })
       },
     })
   }, [addStickyNode, updateStickyNode, screenToFlowPosition])
@@ -631,9 +637,11 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
 
       {textModal && (
         <TextInputModal
-          title={textModal.title}
+          heading={textModal.heading}
           initial={textModal.initial}
           confirmLabel={textModal.confirmLabel}
+          withTitle={textModal.withTitle}
+          initialTitle={textModal.initialTitle}
           onSubmit={textModal.onSubmit}
           onClose={() => setTextModal(null)}
         />

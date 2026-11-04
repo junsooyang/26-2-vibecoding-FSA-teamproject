@@ -97,6 +97,8 @@ export interface WbsNodeData {
 
 /** 스티커(포스트잇) 메모 노드 데이터 */
 export interface StickyNodeData {
+  /** 메모 제목 (선택) */
+  title?: string
   /** 메모 텍스트 */
   text: string
   /** 메모 색상 */
