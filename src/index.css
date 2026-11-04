@@ -1985,3 +1985,58 @@ button.danger:hover {
   background: #fef9c3;
   color: #a16207;
 }
+
+/* ---------- 투표 버튼 호버 시 투표자 목록 ---------- */
+.vote-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.vote-voters {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 90px;
+  max-width: 180px;
+  padding: 8px 10px;
+  background: #1f2937;
+  color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  z-index: 20;
+  white-space: nowrap;
+}
+
+/* 버튼이 있는 래퍼에 호버하면 목록 표시 */
+.vote-wrap:hover .vote-voters {
+  display: flex;
+}
+
+/* 말풍선 꼬리 */
+.vote-voters::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #1f2937;
+}
+
+.vote-voters-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #9ca3af;
+  margin-bottom: 2px;
+}
+
+.vote-voter {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
