@@ -84,6 +84,11 @@ export interface WbsNodeData {
   votes?: string[]
   /** 노드 댓글 목록 */
   comments?: Comment[]
+  /** 사용자가 조절한 너비/높이(px). 없으면 자동 크기 */
+  w?: number
+  h?: number
+  /** 긴 내용 접힘 여부 */
+  collapsed?: boolean
   /** 노드 타입 식별용 (data 로도 구분할 수 있게 둠) */
   kind: 'wbs'
   // React Flow 의 Node<T> 제약 충족용 인덱스 시그니처
@@ -100,6 +105,11 @@ export interface StickyNodeData {
   votes?: string[]
   /** 노드 댓글 목록 */
   comments?: Comment[]
+  /** 사용자가 조절한 너비/높이(px). 없으면 자동 크기 */
+  w?: number
+  h?: number
+  /** 긴 내용 접힘 여부 */
+  collapsed?: boolean
   /** 노드 타입 식별용 */
   kind: 'sticky'
   // React Flow 의 Node<T> 제약 충족용 인덱스 시그니처
@@ -142,6 +152,12 @@ export function isStickyData(data: BoardNodeData): data is StickyNodeData {
 export type BoardNode = Node<BoardNodeData>
 export type BoardEdge = Edge
 
+/** 방 전체 공유 연결선(엣지) 표시 스타일 */
+export interface EdgeStyle {
+  color: string
+  width: number
+}
+
 /** 투표 선택지 */
 export interface PollOption {
   id: string
@@ -172,6 +188,8 @@ export interface CollabHandle {
   edges: Y.Map<BoardEdge>
   /** 방 공유 투표 세션들 (키 = poll id, 여러 개 동시 진행 가능) */
   poll: Y.Map<Poll>
+  /** 방 공유 설정 (키 'edgeStyle' 등) */
+  meta: Y.Map<unknown>
   /** 현재 접속한 사용자 정보(커서/이름 공유용) */
   awareness: WebsocketProvider['awareness']
   destroy: () => void
@@ -190,6 +208,7 @@ export function connectRoom(roomName: string, user: { name: string; color: strin
   const nodes = doc.getMap<BoardNode>('nodes')
   const edges = doc.getMap<BoardEdge>('edges')
   const poll = doc.getMap<Poll>('poll')
+  const meta = doc.getMap<unknown>('meta')
 
   provider.awareness.setLocalStateField('user', user)
 
@@ -199,6 +218,7 @@ export function connectRoom(roomName: string, user: { name: string; color: strin
     nodes,
     edges,
     poll,
+    meta,
     awareness: provider.awareness,
     destroy: () => {
       provider.destroy()

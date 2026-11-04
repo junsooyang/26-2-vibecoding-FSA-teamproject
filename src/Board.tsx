@@ -45,7 +45,9 @@ import LiveCursors from './nodes/LiveCursors'
 import { CurrentUserContext } from './nodes/CurrentUserContext'
 import {
   CHECKLIST_TOGGLE_EVENT,
+  NODE_COLLAPSE_EVENT,
   NODE_COMMENT_EVENT,
+  NODE_RESIZE_EVENT,
   NODE_VOTE_EVENT,
   PROMOTE_WBS_EVENT,
   STICKY_COLOR_EVENT,
@@ -64,12 +66,8 @@ function nodeTitleOf(node: BoardNode): string {
 /** 업로드 이미지 최대 크기(3MB). data URL 로 Yjs 에 저장되므로 과도한 용량 방지. */
 const MAX_IMAGE_SIZE = 3 * 1024 * 1024
 
-/** 연결선(엣지) 개인 표시 설정 — 내 화면에만 적용되고 localStorage 에 저장된다. */
-interface EdgeStyle {
-  color: string
-  width: number
-}
-const DEFAULT_EDGE_STYLE: EdgeStyle = { color: '#6366f1', width: 2.5 }
+/** 연결선(엣지) 스타일 설정 UI 옵션 — 실제 값은 Yjs(meta)에 공유 저장된다. */
+const DEFAULT_EDGE_STYLE = { color: '#6366f1', width: 2.5 }
 const EDGE_COLORS = ['#6366f1', '#111827', '#ef4444', '#f59e0b', '#22c55e', '#06b6d4', '#ec4899']
 const EDGE_WIDTHS: { label: string; value: number }[] = [
   { label: '가늘게', value: 1.5 },
@@ -77,25 +75,6 @@ const EDGE_WIDTHS: { label: string; value: number }[] = [
   { label: '굵게', value: 4 },
   { label: '매우 굵게', value: 6 },
 ]
-
-function edgeStyleKey(room: string) {
-  return `fsa_edgestyle:${room}`
-}
-function loadEdgeStyle(room: string): EdgeStyle {
-  try {
-    const raw = localStorage.getItem(edgeStyleKey(room))
-    if (raw) {
-      const p = JSON.parse(raw) as Partial<EdgeStyle>
-      return {
-        color: typeof p.color === 'string' ? p.color : DEFAULT_EDGE_STYLE.color,
-        width: typeof p.width === 'number' ? p.width : DEFAULT_EDGE_STYLE.width,
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return DEFAULT_EDGE_STYLE
-}
 
 /** 두 노드가 화면상에서 겹치는지 판정 (중심점이 대상 노드 박스 안에 있는지) */
 function overlaps(a: BoardNode, b: BoardNode): boolean {
@@ -134,8 +113,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [personalCollapsed, setPersonalCollapsed] = useState(true)
   // 시작 안내 카드를 사용자가 닫았는지
   const [guideDismissed, setGuideDismissed] = useState(false)
-  // 연결선(엣지) 개인 표시 설정 + 설정 팝오버 열림 여부
-  const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>(() => loadEdgeStyle(room))
+  // 연결선 스타일 설정 팝오버 열림 여부 (값은 공유 edgeStyle 사용)
   const [showEdgeStyle, setShowEdgeStyle] = useState(false)
   // 대시보드 패널 열림 여부
   const [showDashboard, setShowDashboard] = useState(false)
@@ -186,6 +164,10 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     votePoll,
     closePoll,
     clearPoll,
+    edgeStyle,
+    setEdgeStyle,
+    resizeNode,
+    toggleCollapse,
   } = useCollabBoard(room, user)
 
   // 드래그 중인 노드 위에 겹친 "드롭 대상" 노드 id (초록 하이라이트용)
@@ -222,12 +204,22 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       const { id, itemId } = (e as CustomEvent<{ id: string; itemId: string }>).detail ?? {}
       if (id && itemId) toggleChecklistItem(id, itemId)
     }
+    const onCollapse = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id
+      if (id) toggleCollapse(id)
+    }
+    const onResize = (e: Event) => {
+      const { id, w, h } = (e as CustomEvent<{ id: string; w: number; h: number }>).detail ?? {}
+      if (id && w && h) resizeNode(id, w, h)
+    }
     window.addEventListener(WBS_TOGGLE_DONE_EVENT, onToggleDone)
     window.addEventListener(NODE_VOTE_EVENT, onVote)
     window.addEventListener(STICKY_COLOR_EVENT, onStickyColor)
     window.addEventListener(NODE_COMMENT_EVENT, onComment)
     window.addEventListener(PROMOTE_WBS_EVENT, onPromote)
     window.addEventListener(CHECKLIST_TOGGLE_EVENT, onChecklistToggle)
+    window.addEventListener(NODE_COLLAPSE_EVENT, onCollapse)
+    window.addEventListener(NODE_RESIZE_EVENT, onResize)
     return () => {
       window.removeEventListener(WBS_TOGGLE_DONE_EVENT, onToggleDone)
       window.removeEventListener(NODE_VOTE_EVENT, onVote)
@@ -235,8 +227,19 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       window.removeEventListener(NODE_COMMENT_EVENT, onComment)
       window.removeEventListener(PROMOTE_WBS_EVENT, onPromote)
       window.removeEventListener(CHECKLIST_TOGGLE_EVENT, onChecklistToggle)
+      window.removeEventListener(NODE_COLLAPSE_EVENT, onCollapse)
+      window.removeEventListener(NODE_RESIZE_EVENT, onResize)
     }
-  }, [toggleWbsDone, toggleVote, updateStickyNode, promoteToWbs, toggleChecklistItem, username])
+  }, [
+    toggleWbsDone,
+    toggleVote,
+    updateStickyNode,
+    promoteToWbs,
+    toggleChecklistItem,
+    toggleCollapse,
+    resizeNode,
+    username,
+  ])
 
   const { screenToFlowPosition, getNodes } = useReactFlow()
   // 내보내기 진행 중 표시
@@ -289,14 +292,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     [edges, edgeStyle],
   )
 
-  // 엣지 설정 변경 시 localStorage 저장 (방별 개인 설정)
-  useEffect(() => {
-    try {
-      localStorage.setItem(edgeStyleKey(room), JSON.stringify(edgeStyle))
-    } catch {
-      // ignore
-    }
-  }, [edgeStyle, room])
+
 
   // 편집 중인 WBS 노드의 현재 데이터
   const editingNode = editingWbsId ? nodes.find((n) => n.id === editingWbsId) : undefined
@@ -651,7 +647,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
               닫기
             </button>
           </div>
-          <p className="edge-style-note">내 화면에만 적용돼요 (기기별 저장)</p>
+          <p className="edge-style-note">모든 참여자에게 공유돼요</p>
 
           <div className="field-label">색상</div>
           <div className="edge-color-row">
@@ -661,7 +657,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
                 type="button"
                 className={edgeStyle.color === c ? 'edge-color active' : 'edge-color'}
                 style={{ background: c }}
-                onClick={() => setEdgeStyle((s) => ({ ...s, color: c }))}
+                onClick={() => setEdgeStyle({ ...edgeStyle, color: c })}
                 title={c}
               />
             ))}
@@ -669,7 +665,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
               type="color"
               className="edge-color-custom"
               value={edgeStyle.color}
-              onChange={(e) => setEdgeStyle((s) => ({ ...s, color: e.target.value }))}
+              onChange={(e) => setEdgeStyle({ ...edgeStyle, color: e.target.value })}
               title="직접 선택"
             />
           </div>
@@ -681,7 +677,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
                 key={w.value}
                 type="button"
                 className={edgeStyle.width === w.value ? 'edge-width active' : 'edge-width'}
-                onClick={() => setEdgeStyle((s) => ({ ...s, width: w.value }))}
+                onClick={() => setEdgeStyle({ ...edgeStyle, width: w.value })}
               >
                 {w.label}
               </button>

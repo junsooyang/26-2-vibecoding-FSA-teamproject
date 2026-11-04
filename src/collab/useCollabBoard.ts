@@ -16,6 +16,7 @@ import {
   type ChecklistItem,
   type CollabHandle,
   type Comment,
+  type EdgeStyle,
   type ImageNodeData,
   type Poll,
   type PollOption,
@@ -54,6 +55,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
   const [peers, setPeers] = useState<AwarenessUser[]>([])
   const [cursors, setCursors] = useState<RemoteCursor[]>([])
   const [polls, setPolls] = useState<Poll[]>([])
+  const [edgeStyle, setEdgeStyleState] = useState<EdgeStyle>({ color: '#6366f1', width: 2.5 })
   const [connected, setConnected] = useState(false)
 
   // 방 연결 + Yjs 관찰자 등록
@@ -71,14 +73,22 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
           .map((p) => ({ ...p, deadline: typeof p.deadline === 'number' ? p.deadline : 0 }))
           .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
       )
+    const syncMeta = () => {
+      const es = handle.meta.get('edgeStyle') as Partial<EdgeStyle> | undefined
+      if (es && typeof es.color === 'string' && typeof es.width === 'number') {
+        setEdgeStyleState({ color: es.color, width: es.width })
+      }
+    }
 
     handle.nodes.observe(syncNodes)
     handle.edges.observe(syncEdges)
     handle.poll.observe(syncPoll)
+    handle.meta.observe(syncMeta)
     // 초기 상태 반영
     syncNodes()
     syncEdges()
     syncPoll()
+    syncMeta()
 
     handle.provider.on('status', (e: { status: string }) => {
       setConnected(e.status === 'connected')
@@ -117,6 +127,7 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       handle.nodes.unobserve(syncNodes)
       handle.edges.unobserve(syncEdges)
       handle.poll.unobserve(syncPoll)
+      handle.meta.unobserve(syncMeta)
       handle.awareness.off('change', syncAwareness)
       handle.destroy()
       handleRef.current = null
@@ -617,6 +628,38 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
     handle.poll.delete(pollId)
   }, [])
 
+  /** 공유 연결선 스타일 설정 (모든 참여자에게 반영) */
+  const setEdgeStyle = useCallback((style: EdgeStyle) => {
+    const handle = handleRef.current
+    if (!handle) return
+    handle.meta.set('edgeStyle', style)
+  }, [])
+
+  /** 노드 크기(너비/높이) 저장 — 공유 */
+  const resizeNode = useCallback((id: string, w: number, h: number) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing) return
+    handle.nodes.set(id, {
+      ...existing,
+      data: { ...existing.data, w, h } as BoardNode['data'],
+    })
+  }, [])
+
+  /** 노드 내용 접힘/펼침 토글 — 공유 */
+  const toggleCollapse = useCallback((id: string) => {
+    const handle = handleRef.current
+    if (!handle) return
+    const existing = handle.nodes.get(id)
+    if (!existing) return
+    const cur = (existing.data as { collapsed?: boolean }).collapsed ?? false
+    handle.nodes.set(id, {
+      ...existing,
+      data: { ...existing.data, collapsed: !cur } as BoardNode['data'],
+    })
+  }, [])
+
   return useMemo(
     () => ({
       nodes,
@@ -655,6 +698,10 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       votePoll,
       closePoll,
       clearPoll,
+      edgeStyle,
+      setEdgeStyle,
+      resizeNode,
+      toggleCollapse,
     }),
     [
       nodes,
@@ -693,6 +740,10 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
       votePoll,
       closePoll,
       clearPoll,
+      edgeStyle,
+      setEdgeStyle,
+      resizeNode,
+      toggleCollapse,
     ],
   )
 }

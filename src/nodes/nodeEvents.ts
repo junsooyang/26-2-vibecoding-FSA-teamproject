@@ -20,3 +20,9 @@ export const PROMOTE_WBS_EVENT = 'promote-wbs'
 
 /** WBS 세부 체크항목 완료 토글: detail = { id, itemId } */
 export const CHECKLIST_TOGGLE_EVENT = 'checklist-toggle'
+
+/** 노드 내용 접기/펼치기 토글: detail = { id } */
+export const NODE_COLLAPSE_EVENT = 'node-collapse'
+
+/** 노드 크기 조절 완료: detail = { id, w, h } */
+export const NODE_RESIZE_EVENT = 'node-resize'

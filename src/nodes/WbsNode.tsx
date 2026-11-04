@@ -1,7 +1,12 @@
-import { type NodeProps } from '@xyflow/react'
+import { NodeResizer, type NodeProps } from '@xyflow/react'
 import type { Attachment, WbsStatus } from '../collab/yjs'
 import { useCurrentUsername } from './CurrentUserContext'
-import { CHECKLIST_TOGGLE_EVENT, WBS_TOGGLE_DONE_EVENT } from './nodeEvents'
+import {
+  CHECKLIST_TOGGLE_EVENT,
+  NODE_COLLAPSE_EVENT,
+  NODE_RESIZE_EVENT,
+  WBS_TOGGLE_DONE_EVENT,
+} from './nodeEvents'
 import { dueBadge, dueState } from '../collab/wbsUtils'
 import NodeHandles from './NodeHandles'
 import VoteButton from './VoteButton'
@@ -34,11 +39,17 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
     attachments?: Attachment[]
     votes?: string[]
     comments?: { id: string }[]
+    w?: number
+    h?: number
+    collapsed?: boolean
   }
   const me = useCurrentUsername()
   const status = WBS_STATUS[d.status] ?? WBS_STATUS.todo
   const progress = Math.max(0, Math.min(100, Number(d.progress) || 0))
   const done = d.status === 'done'
+  const label = d.label || ''
+  const isLong = label.length > 40
+  const collapsed = d.collapsed ?? false
   const dstate = dueState(d.due, done)
   const checklist = d.checklist ?? []
   const checklistDone = checklist.filter((c) => c.done).length
@@ -57,8 +68,31 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
     window.dispatchEvent(new CustomEvent(CHECKLIST_TOGGLE_EVENT, { detail: { id, itemId } }))
   }
 
+  const onToggleCollapse = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    window.dispatchEvent(new CustomEvent(NODE_COLLAPSE_EVENT, { detail: { id } }))
+  }
+
+  const sizeStyle: React.CSSProperties = {
+    borderColor: status.color,
+    ...(d.w ? { width: d.w } : {}),
+    ...(d.h ? { minHeight: d.h } : {}),
+  }
+
   return (
-    <div className={selected ? 'wbs-node selected' : 'wbs-node'} style={{ borderColor: status.color }}>
+    <div className={selected ? 'wbs-node selected' : 'wbs-node'} style={sizeStyle}>
+      <NodeResizer
+        isVisible={selected}
+        minWidth={180}
+        minHeight={110}
+        onResizeEnd={(_e, params) => {
+          window.dispatchEvent(
+            new CustomEvent(NODE_RESIZE_EVENT, {
+              detail: { id, w: Math.round(params.width), h: Math.round(params.height) },
+            }),
+          )
+        }}
+      />
       <NodeHandles />
 
       <div className="wbs-head">
@@ -71,7 +105,16 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
         </span>
       </div>
 
-      <div className={done ? 'wbs-title done' : 'wbs-title'}>{d.label || '(제목 없음)'}</div>
+      <div
+        className={`wbs-title${done ? ' done' : ''}${collapsed ? ' clamped' : ''}`}
+      >
+        {label || '(제목 없음)'}
+      </div>
+      {isLong && (
+        <button type="button" className="collapse-toggle" onClick={onToggleCollapse}>
+          {collapsed ? '⌄ 펼치기' : '⌃ 접기'}
+        </button>
+      )}
 
       <div className="wbs-meta">
         <span className="wbs-assignee">{d.assignee ? `👤 ${d.assignee}` : '담당자 미지정'}</span>

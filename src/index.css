@@ -2130,3 +2130,55 @@ button.danger:hover {
   width: 100%;
   font-size: 12px;
 }
+
+/* ---------- 노드 크기조절 / 접기·펼치기 ---------- */
+/* 리사이즈로 크기를 바꿀 수 있도록, 인라인 style(width/height)이 우선되게 함.
+   (고정 width 를 넘어설 수 있게 max-width 해제) */
+.sticky-node,
+.wbs-node {
+  max-width: none;
+}
+
+/* NodeResizer 핸들/선이 눈에 띄게 */
+.react-flow__resize-control.handle {
+  width: 9px;
+  height: 9px;
+  background: #6366f1;
+  border: 1px solid #fff;
+  border-radius: 2px;
+}
+.react-flow__resize-control.line {
+  border-color: #6366f1;
+}
+
+/* 접힘(clamped): 긴 텍스트를 3줄까지만 표시하고 … 처리 */
+.sticky-text.clamped,
+.wbs-title.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 접기/펼치기 토글 버튼 */
+.collapse-toggle {
+  align-self: flex-start;
+  margin: 2px 0 4px;
+  padding: 2px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #fff;
+  color: #4338ca;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.collapse-toggle:hover {
+  background: #eef2ff;
+}
+
+/* 스티커 노드가 지정 높이를 쓸 때 내부가 넘치지 않도록 */
+.sticky-node {
+  overflow: hidden;
+}
