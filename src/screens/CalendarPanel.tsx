@@ -85,8 +85,10 @@ export default function CalendarPanel({
     [events, selected],
   )
 
-  const goPrev = () => setCursor(new Date(year, month - 1, 1))
-  const goNext = () => setCursor(new Date(year, month + 1, 1))
+  const goPrevMonth = () => setCursor(new Date(year, month - 1, 1))
+  const goNextMonth = () => setCursor(new Date(year, month + 1, 1))
+  const goPrevYear = () => setCursor(new Date(year - 1, month, 1))
+  const goNextYear = () => setCursor(new Date(year + 1, month, 1))
   const goToday = () => {
     setCursor(new Date(today.getFullYear(), today.getMonth(), 1))
     setSelected(todayIso)
@@ -126,14 +128,20 @@ export default function CalendarPanel({
       </div>
 
       <div className="cal-nav">
-        <button type="button" className="ghost" onClick={goPrev} title="이전 달">
+        <button type="button" className="ghost cal-nav-btn" onClick={goPrevYear} title="이전 해">
+          «
+        </button>
+        <button type="button" className="ghost cal-nav-btn" onClick={goPrevMonth} title="이전 달">
           ‹
         </button>
         <strong className="cal-title">
           {year}년 {month + 1}월
         </strong>
-        <button type="button" className="ghost" onClick={goNext} title="다음 달">
+        <button type="button" className="ghost cal-nav-btn" onClick={goNextMonth} title="다음 달">
           ›
+        </button>
+        <button type="button" className="ghost cal-nav-btn" onClick={goNextYear} title="다음 해">
+          »
         </button>
         <button type="button" className="cal-today-btn" onClick={goToday}>
           오늘

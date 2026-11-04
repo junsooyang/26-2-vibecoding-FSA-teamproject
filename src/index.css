@@ -1089,8 +1089,15 @@ button.danger:hover {
 
 .cal-title {
   font-size: 15px;
-  min-width: 96px;
+  flex: 1;
+  min-width: 0;
   text-align: center;
+}
+
+.cal-nav-btn {
+  padding: 4px 9px;
+  font-size: 15px;
+  line-height: 1;
 }
 
 .cal-today-btn {
