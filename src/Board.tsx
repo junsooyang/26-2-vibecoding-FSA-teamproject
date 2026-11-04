@@ -478,6 +478,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       style={{ width: '100vw', height: '100vh' }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
+      onDoubleClick={handlePaneDoubleClick}
     >
       <div className="toolbar">
         <strong className="room-title">{roomName}</strong>
@@ -640,7 +641,6 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onDoubleClick={handlePaneDoubleClick}
         onNodeDoubleClick={handleNodeDoubleClick}
         onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleNodeDragStop}
