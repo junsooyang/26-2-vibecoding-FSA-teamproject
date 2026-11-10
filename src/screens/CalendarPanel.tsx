@@ -1,11 +1,30 @@
 import { useMemo, useState } from 'react'
 import type { CalendarEvent } from '../collab/yjs'
+import { dueBadge } from '../collab/wbsUtils'
+
+/** 캘린더에 자동 표시되는 WBS 작업 마감 (WBS 노드에서 파생 — 별도 저장 없음) */
+export interface WbsDeadline {
+  /** WBS 노드 id */
+  id: string
+  /** 작업명 */
+  label: string
+  /** 담당자 */
+  assignee: string
+  /** 마감일 (YYYY-MM-DD) */
+  due: string
+  /** 완료 여부 */
+  done: boolean
+}
 
 interface Props {
   /** 방 이름(헤더 표시용) */
   roomName: string
   /** 캘린더 일정 목록 (Yjs 에서 실시간 반영, 날짜순) */
   events: CalendarEvent[]
+  /** 마감일이 지정된 WBS 작업들 (자동으로 캘린더에 기록됨) */
+  deadlines: WbsDeadline[]
+  /** WBS 마감 항목의 체크 → 해당 작업 완료/해제 */
+  onToggleDeadline: (nodeId: string) => void
   onAdd: (date: string, text: string) => void
   onToggle: (id: string) => void
   onEdit: (id: string, text: string) => void
@@ -33,6 +52,8 @@ function formatDateLabel(iso: string) {
 export default function CalendarPanel({
   roomName,
   events,
+  deadlines,
+  onToggleDeadline,
   onAdd,
   onToggle,
   onEdit,
@@ -63,8 +84,15 @@ export default function CalendarPanel({
       if (e.done) cur.done += 1
       map[e.date] = cur
     }
+    // WBS 마감도 같은 날짜 배지에 합산
+    for (const d of deadlines) {
+      const cur = map[d.due] ?? { total: 0, done: 0 }
+      cur.total += 1
+      if (d.done) cur.done += 1
+      map[d.due] = cur
+    }
     return map
-  }, [events])
+  }, [events, deadlines])
 
   // 달력 그리드 셀 구성 (앞쪽 빈칸 + 날짜들)
   const cells = useMemo(() => {
@@ -83,6 +111,11 @@ export default function CalendarPanel({
   const dayEvents = useMemo(
     () => events.filter((e) => e.date === selected),
     [events, selected],
+  )
+  // 선택한 날짜가 마감인 WBS 작업
+  const dayDeadlines = useMemo(
+    () => deadlines.filter((d) => d.due === selected),
+    [deadlines, selected],
   )
 
   const goPrevMonth = () => setCursor(new Date(year, month - 1, 1))
@@ -183,7 +216,26 @@ export default function CalendarPanel({
       <div className="cal-day-head">{formatDateLabel(selected)}</div>
 
       <div className="cal-event-list">
-        {dayEvents.length === 0 ? (
+        {/* WBS 작업 마감 — 마감일 지정 시 자동 기록. 체크하면 WBS 작업이 완료 처리됨 */}
+        {dayDeadlines.map((d) => (
+          <div key={`wbs-${d.id}`} className={d.done ? 'cal-event wbs done' : 'cal-event wbs'}>
+            <label className="cal-event-main">
+              <input
+                type="checkbox"
+                checked={d.done}
+                onChange={() => onToggleDeadline(d.id)}
+              />
+              <span className="cal-event-text">
+                <span className="cal-wbs-tag">WBS 마감</span>
+                {d.label}
+                {d.assignee && <span className="cal-wbs-assignee"> · {d.assignee}</span>}
+              </span>
+            </label>
+            <span className="cal-wbs-due">{dueBadge(d.due, d.done)}</span>
+          </div>
+        ))}
+
+        {dayEvents.length === 0 && dayDeadlines.length === 0 ? (
           <p className="tip">이 날짜에 일정이 없어요. 아래에서 추가해보세요.</p>
         ) : (
           dayEvents.map((ev) => {

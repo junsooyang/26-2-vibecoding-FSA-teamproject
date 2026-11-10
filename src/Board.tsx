@@ -25,11 +25,13 @@ import {
   type StickyColor,
   type WbsNodeData,
 } from './collab/yjs'
+import { api } from './api/client'
 import MembersPanel from './screens/MembersPanel'
 import WbsEditPanel from './screens/WbsEditPanel'
 import CommentsPanel from './screens/CommentsPanel'
 import ChatPanel from './screens/ChatPanel'
-import CalendarPanel from './screens/CalendarPanel'
+import DeleteBoardModal from './screens/DeleteBoardModal'
+import CalendarPanel, { type WbsDeadline } from './screens/CalendarPanel'
 import PersonalSpacePanel from './screens/PersonalSpacePanel'
 import DashboardPanel from './screens/DashboardPanel'
 import TextInputModal from './screens/TextInputModal'
@@ -106,6 +108,41 @@ interface BoardProps {
 }
 
 function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
+  // 내 역할 (서버에서 확인). 팀장(owner)에게만 보드 삭제 버튼을 보여준다.
+  const [isOwner, setIsOwner] = useState(false)
+  useEffect(() => {
+    let alive = true
+    api
+      .getRoom(room)
+      .then((res) => {
+        if (alive) setIsOwner(res.role === 'owner')
+      })
+      .catch(() => {
+        if (alive) setIsOwner(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [room])
+
+  // 보드 삭제 확인 모달 상태 (팀장 전용 — 서버도 owner 가 아니면 403 으로 거부한다)
+  const [showDeleteBoard, setShowDeleteBoard] = useState(false)
+  const [deletingBoard, setDeletingBoard] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  // 확인 문구 입력이 끝난 뒤에만 호출됨 (DeleteBoardModal)
+  const handleDeleteBoard = useCallback(async () => {
+    setDeletingBoard(true)
+    setDeleteError(null)
+    try {
+      await api.deleteRoom(room)
+      onLeave()
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : '보드 삭제에 실패했어요.')
+      setDeletingBoard(false)
+    }
+  }, [room, onLeave])
+
   const [showMembers, setShowMembers] = useState(false)
   // 편집 중인 WBS 노드 id (null = 패널 닫힘)
   const [editingWbsId, setEditingWbsId] = useState<string | null>(null)
@@ -543,6 +580,25 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     }
   }, [buildBoardImage, roomName])
 
+  // 캘린더에 자동 기록할 WBS 마감 (마감일이 지정된 작업만). 노드에서 바로 파생하므로
+  // 마감일 수정/작업 삭제/완료 토글이 캘린더에 즉시 반영된다.
+  const wbsDeadlines = useMemo<WbsDeadline[]>(
+    () =>
+      nodes
+        .filter((n) => isWbsData(n.data) && !!(n.data as WbsNodeData).due)
+        .map((n) => {
+          const d = n.data as WbsNodeData
+          return {
+            id: n.id,
+            label: d.label || '(제목 없는 작업)',
+            assignee: d.assignee,
+            due: d.due as string,
+            done: d.status === 'done',
+          }
+        }),
+    [nodes],
+  )
+
   // 대시보드 집계용 WBS 작업 데이터 목록
   const wbsTasks = useMemo(
     () => nodes.filter((n) => isWbsData(n.data)).map((n) => n.data as WbsNodeData),
@@ -617,7 +673,10 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
                 onClick={() => setShowCalendar((v) => !v)}
                 title="팀 일정 캘린더 (날짜별 일정 추가/체크)"
               >
-                🗓️ 캘린더{calendar.length > 0 ? ` (${calendar.length})` : ''}
+                🗓️ 캘린더
+                {calendar.length + wbsDeadlines.length > 0
+                  ? ` (${calendar.length + wbsDeadlines.length})`
+                  : ''}
               </button>
               <button onClick={() => setShowPoll(true)} title="질문/선택지로 팀 투표 진행">
                 🗳️ 투표
@@ -671,6 +730,18 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
                 🔗 선 스타일
               </button>
               <button onClick={() => setShowMembers(true)}>멤버 관리</button>
+              {isOwner && (
+                <button
+                  className="danger-action"
+                  onClick={() => {
+                    setDeleteError(null)
+                    setShowDeleteBoard(true)
+                  }}
+                  title="이 보드를 완전히 삭제 (팀장만 가능)"
+                >
+                  🗑️ 보드 삭제
+                </button>
+              )}
             </span>
           )}
         </span>
@@ -775,6 +846,16 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
 
       {showMembers && <MembersPanel slug={room} onClose={() => setShowMembers(false)} />}
 
+      {showDeleteBoard && isOwner && (
+        <DeleteBoardModal
+          roomName={roomName}
+          deleting={deletingBoard}
+          error={deleteError}
+          onConfirm={handleDeleteBoard}
+          onClose={() => setShowDeleteBoard(false)}
+        />
+      )}
+
       <PersonalSpacePanel
         room={room}
         username={username}
@@ -815,6 +896,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         <CalendarPanel
           roomName={roomName}
           events={calendar}
+          deadlines={wbsDeadlines}
+          onToggleDeadline={(nodeId) => toggleWbsDone(nodeId)}
           onAdd={(date, text) => addCalendarEvent(date, text, username)}
           onToggle={(id) => toggleCalendarEvent(id)}
           onEdit={(id, text) => editCalendarEvent(id, text)}

@@ -225,28 +225,42 @@ button.ghost {
   gap: 8px;
 }
 
+/* .lobby-card button(보라 배경/흰 글자)보다 우선하도록 선택자를 맞춤 */
+.lobby-card .room-item,
 .room-item {
   width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 14px 16px;
-  border: 1px solid #e5e7eb;
+  /* 흰 카드 위에서도 경계가 또렷하도록 진한 테두리 + 왼쪽 강조선 + 옅은 배경 */
+  border: 1.5px solid #9ca3af;
+  border-left: 5px solid #6366f1;
   border-radius: 10px;
-  background: #fff;
+  background: #f3f4f6;
+  color: #111827;
   cursor: pointer;
   text-align: left;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
 
+/* 호버: 연해지지 않고 또렷하게 (진한 테두리 + 선명한 배경 + 그림자) */
+.lobby-card .room-item:hover,
 .room-item:hover {
-  border-color: #6366f1;
-  background: #f5f3ff;
+  border-color: #4f46e5;
+  background: #e0e7ff;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
 }
 
 .room-name {
-  font-weight: 600;
+  font-weight: 700;
   font-size: 15px;
-  color: #1f2937;
+  color: #111827;
+}
+
+.room-item:hover .room-name {
+  color: #3730a3;
 }
 
 .room-meta {
@@ -254,7 +268,7 @@ button.ghost {
   align-items: center;
   gap: 10px;
   font-size: 12px;
-  color: #9ca3af;
+  color: #4b5563;
 }
 
 .role {
@@ -268,8 +282,8 @@ button.ghost {
   color: #b45309;
 }
 .role.member {
-  background: #e0e7ff;
-  color: #4338ca;
+  background: #c7d2fe;
+  color: #3730a3;
 }
 
 /* ---------- 멤버 관리 패널 ---------- */
@@ -1230,6 +1244,40 @@ button.danger:hover {
   word-break: break-word;
 }
 
+/* WBS 마감 항목: 직접 입력한 일정과 구분되도록 왼쪽 강조선 + 태그 */
+.cal-event.wbs {
+  border-left: 4px solid #6366f1;
+  background: #eef2ff;
+}
+
+.cal-wbs-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.cal-wbs-assignee {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.cal-wbs-due {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #4338ca;
+}
+
+.cal-event.wbs.done .cal-wbs-tag {
+  background: #9ca3af;
+}
+
 .cal-event.done .cal-event-text {
   text-decoration: line-through;
   color: #9ca3af;
@@ -1456,6 +1504,92 @@ button.danger:hover {
 .leave-btn {
   border-color: #fca5a5 !important;
   color: #dc2626 !important;
+}
+
+/* ---------- 보드 삭제 확인 모달 ---------- */
+.delete-board-modal {
+  max-width: 440px;
+}
+
+.delete-warning {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #374151;
+}
+
+.delete-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.delete-label code {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.delete-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.delete-input:focus {
+  outline: none;
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+}
+
+.delete-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.delete-actions button {
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.delete-cancel {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+}
+
+.delete-confirm {
+  border: none;
+  background: #dc2626;
+  color: #fff;
+}
+
+.delete-confirm:disabled {
+  background: #fca5a5;
+  cursor: not-allowed;
+}
+
+/* 보드 삭제 등 되돌릴 수 없는 동작 버튼 */
+.toolbar button.danger-action {
+  border-color: #dc2626;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.toolbar button.danger-action:hover {
+  background: #dc2626;
+  color: #fff;
 }
 
 /* ---------- 상시 노출 채팅 버튼 (오른쪽 상단, 나가기 아래) ---------- */

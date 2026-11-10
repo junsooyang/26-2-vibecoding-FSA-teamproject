@@ -190,6 +190,14 @@ router.delete('/:slug', loadRoomMembership, (req, res) => {
     return res.status(403).json({ error: '팀장(owner)만 방을 삭제할 수 있습니다.' })
   }
   deleteRoom.run(req.room.id)
+  // 방에 딸린 데이터도 함께 정리: 팀원들의 개인 공간 + 보드 내용(Yjs 문서 스냅샷).
+  // docs 테이블은 실시간 서버(persistence.js)가 만들므로 아직 없을 수 있어 실패해도 무시한다.
+  try {
+    db.prepare('DELETE FROM personal_spaces WHERE room_slug = ?').run(req.room.slug)
+    db.prepare('DELETE FROM docs WHERE name = ?').run(req.room.slug)
+  } catch (err) {
+    console.warn('[api] 방 부속 데이터 정리 중 경고:', err instanceof Error ? err.message : err)
+  }
   return res.json({ ok: true })
 })
 

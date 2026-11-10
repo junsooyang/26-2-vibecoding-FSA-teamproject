@@ -52,13 +52,22 @@ export default function RoomListScreen({ user, onEnterRoom, onLogout }: Props) {
     }
   }
 
+  /** 이름을 입력하지 않았을 때 쓸 기본 이름: 새보드(1), 새보드(2) ... 중 아직 안 쓰는 가장 작은 번호 */
+  const nextDefaultName = () => {
+    const used = new Set(rooms.map((r) => r.name))
+    let n = 1
+    while (used.has(`새보드(${n})`)) n++
+    return `새보드(${n})`
+  }
+
   const createRoom = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newRoomName.trim()) return
+    if (creating) return
+    const name = newRoomName.trim() || nextDefaultName()
     setCreating(true)
     setError(null)
     try {
-      const res = await api.createRoom(newRoomName.trim())
+      const res = await api.createRoom(name)
       setNewRoomName('')
       await loadRooms()
       onEnterRoom(res.room)
@@ -85,10 +94,10 @@ export default function RoomListScreen({ user, onEnterRoom, onLogout }: Props) {
         <form className="create-row" onSubmit={createRoom}>
           <input
             value={newRoomName}
-            placeholder="새 보드 이름 (예: 2학기 프로젝트 WBS)"
+            placeholder="새 보드 이름 (비워두면 새보드(1), 새보드(2)... 자동)"
             onChange={(e) => setNewRoomName(e.target.value)}
           />
-          <button type="submit" disabled={creating || !newRoomName.trim()}>
+          <button type="submit" disabled={creating}>
             {creating ? '생성 중...' : '+ 방 만들기'}
           </button>
         </form>
