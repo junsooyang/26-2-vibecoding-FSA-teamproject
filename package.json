@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "26-2 바이브코딩 FSA 팀플 - 실시간 협업 보드 (브레인스토밍 / 마인드맵 / WBS)",
+  "description": "팀플X실시간 협업 보드 (브레인스토밍 / 마인드맵 / WBS)",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

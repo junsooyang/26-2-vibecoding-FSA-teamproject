@@ -16,7 +16,8 @@ body {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  /* 시작 화면(로그인/보드 목록) 배경: 짙은 남색 → 파랑 */
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 55%, #2563eb 100%);
   padding: 16px;
 }
 

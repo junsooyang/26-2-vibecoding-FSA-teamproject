@@ -34,7 +34,7 @@ export default function AuthScreen({ onAuthenticated }: Props) {
   return (
     <div className="lobby">
       <div className="lobby-card">
-        <h1>실시간 협업 보드</h1>
+        <h1>팀플X실시간 협업 보드</h1>
 
         <div className="tabs">
           <button
