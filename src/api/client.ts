@@ -87,6 +87,93 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T
 }
 
+// ---------------------------------------------------------------------------
+// 보드 파일(사진/첨부): 서버 디스크에 저장하고, 보드 문서에는 참조 문자열만 둔다.
+// 참조 형식: fsafile:<보드 slug>/<파일 id>
+// 내려받기에는 인증이 필요해서 <img src> 에 바로 쓸 수 없다. → 인증 헤더로 가져온 뒤 blob URL 로 변환한다.
+// ---------------------------------------------------------------------------
+
+export const FILE_REF_PREFIX = 'fsafile:'
+
+/** 보드 문서에 저장된 값이 서버 파일 참조인지 (예전 data URL / 외부 링크와 구분) */
+export function isFileRef(url: string | undefined): url is string {
+  return typeof url === 'string' && url.startsWith(FILE_REF_PREFIX)
+}
+
+export interface UploadedFile {
+  id: string
+  name: string
+  mime: string
+  size: number
+  /** 보드 문서에 저장할 참조 문자열 */
+  ref: string
+}
+
+/** 파일을 서버에 올린다. kind=image 는 PNG/JPG/GIF/WEBP 만 허용된다. */
+export async function uploadFile(
+  slug: string,
+  file: File,
+  kind: 'image' | 'file',
+): Promise<UploadedFile> {
+  const token = getToken()
+  const res = await fetch(`${API_BASE}/files/${encodeURIComponent(slug)}?kind=${kind}`, {
+    method: 'POST',
+    headers: {
+      // JSON 으로 오해되지 않게 항상 octet-stream. 실제 형식은 헤더로 전달한다.
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(file.name),
+      'X-File-Type': file.type || 'application/octet-stream',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: file,
+  })
+  let data: unknown = null
+  try {
+    data = await res.json()
+  } catch {
+    // 응답 본문 없음
+  }
+  if (!res.ok) {
+    throw new Error((data as { error?: string } | null)?.error ?? `업로드 실패 (${res.status})`)
+  }
+  return (data as { file: UploadedFile }).file
+}
+
+// 같은 파일을 여러 번 가져오지 않도록 참조별로 결과(Promise)를 캐시한다.
+const blobUrlCache = new Map<string, Promise<string>>()
+
+/** 파일 참조를 브라우저에서 쓸 수 있는 blob URL 로 바꾼다. (인증 헤더 포함, 캐시됨) */
+export function fetchFileBlobUrl(ref: string): Promise<string> {
+  const cached = blobUrlCache.get(ref)
+  if (cached) return cached
+
+  const promise = (async () => {
+    const path = ref.slice(FILE_REF_PREFIX.length) // "<slug>/<id>"
+    const token = getToken()
+    const res = await fetch(`${API_BASE}/files/${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) throw new Error(`파일을 불러오지 못했어요 (${res.status})`)
+    return URL.createObjectURL(await res.blob())
+  })()
+
+  // 실패한 결과는 캐시에 남기지 않아 다음에 다시 시도할 수 있게 한다.
+  promise.catch(() => blobUrlCache.delete(ref))
+  blobUrlCache.set(ref, promise)
+  return promise
+}
+
+/** 서버 파일 참조를 지정한 파일명으로 내려받는다. */
+export async function downloadFileRef(ref: string, filename: string) {
+  const url = await fetchFileBlobUrl(ref)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
+
 export const api = {
   // 인증
   register: (username: string, name: string, password: string) =>

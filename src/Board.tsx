@@ -25,7 +25,7 @@ import {
   type StickyColor,
   type WbsNodeData,
 } from './collab/yjs'
-import { api } from './api/client'
+import { api, uploadFile } from './api/client'
 import MembersPanel from './screens/MembersPanel'
 import WbsEditPanel from './screens/WbsEditPanel'
 import CommentsPanel from './screens/CommentsPanel'
@@ -67,8 +67,8 @@ function nodeTitleOf(node: BoardNode): string {
   return String((d as { label?: string }).label ?? '(노드)')
 }
 
-/** 업로드 이미지 최대 크기(3MB). data URL 로 Yjs 에 저장되므로 과도한 용량 방지. */
-const MAX_IMAGE_SIZE = 3 * 1024 * 1024
+/** 업로드 이미지 최대 크기(5MB). 서버도 같은 한도로 검사한다. */
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024
 
 /** 연결선(엣지) 스타일 설정 UI 옵션 — 실제 값은 Yjs(meta)에 공유 저장된다. */
 const DEFAULT_EDGE_STYLE = { color: '#6366f1', width: 2.5 }
@@ -131,17 +131,35 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   // 확인 문구 입력이 끝난 뒤에만 호출됨 (DeleteBoardModal)
+  // 내가 직접 삭제 중이면, 서버가 연결을 끊을 때 뜨는 "삭제됨" 알림은 건너뛴다.
+  const deletingByMeRef = useRef(false)
   const handleDeleteBoard = useCallback(async () => {
     setDeletingBoard(true)
     setDeleteError(null)
+    deletingByMeRef.current = true
     try {
       await api.deleteRoom(room)
       onLeave()
     } catch (err) {
+      deletingByMeRef.current = false
       setDeleteError(err instanceof Error ? err.message : '보드 삭제에 실패했어요.')
       setDeletingBoard(false)
     }
   }, [room, onLeave])
+
+  // 서버가 연결을 끊은 경우 (다른 팀원이 보드를 삭제했거나, 내가 멤버에서 제외됨)
+  const handleAccessLost = useCallback(
+    (reason: 'deleted' | 'forbidden') => {
+      if (deletingByMeRef.current) return
+      window.alert(
+        reason === 'deleted'
+          ? '팀장이 이 보드를 삭제했어요. 보드 목록으로 돌아갑니다.'
+          : '이 보드에서 제외되어 더 이상 접근할 수 없어요. 보드 목록으로 돌아갑니다.',
+      )
+      onLeave()
+    },
+    [onLeave],
+  )
 
   const [showMembers, setShowMembers] = useState(false)
   // 편집 중인 WBS 노드 id (null = 패널 닫힘)
@@ -224,7 +242,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     setEdgeStyle,
     resizeNode,
     toggleCollapse,
-  } = useCollabBoard(room, user)
+  } = useCollabBoard(room, user, handleAccessLost)
 
   // 드래그 중인 노드 위에 겹친 "드롭 대상" 노드 id (초록 하이라이트용)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
@@ -485,24 +503,26 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const handleImagePicked = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0]
-      if (file) {
-        if (file.size > MAX_IMAGE_SIZE) {
-          window.alert('이미지가 너무 큽니다. 최대 3MB까지 가능합니다.')
-        } else {
-          const reader = new FileReader()
-          reader.onload = () => {
-            const position = screenToFlowPosition({
-              x: window.innerWidth / 2,
-              y: window.innerHeight / 2,
-            })
-            addImageNode(String(reader.result), position, file.name)
-          }
-          reader.readAsDataURL(file)
-        }
-      }
       if (imageInputRef.current) imageInputRef.current.value = ''
+      if (!file) return
+      if (file.size > MAX_IMAGE_SIZE) {
+        window.alert('이미지가 너무 큽니다. 최대 5MB까지 가능합니다.')
+        return
+      }
+      // 사진은 서버에 올리고, 보드 문서에는 짧은 참조 문자열만 저장한다.
+      uploadFile(room, file, 'image')
+        .then((uploaded) => {
+          const position = screenToFlowPosition({
+            x: window.innerWidth / 2,
+            y: window.innerHeight / 2,
+          })
+          addImageNode(uploaded.ref, position, file.name)
+        })
+        .catch((err) => {
+          window.alert(err instanceof Error ? err.message : '사진을 올리지 못했어요.')
+        })
     },
-    [addImageNode, screenToFlowPosition],
+    [room, addImageNode, screenToFlowPosition],
   )
 
   // --- 격자(행렬) 정렬 ---
@@ -922,6 +942,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
 
       {editingData && editingWbsId && (
         <WbsEditPanel
+          roomSlug={room}
           initial={editingData}
           onSave={(patch) => updateWbsNode(editingWbsId, patch)}
           onAddAttachment={(a) => addAttachment(editingWbsId, a)}

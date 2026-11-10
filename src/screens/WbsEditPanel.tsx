@@ -1,8 +1,11 @@
 import { useRef, useState } from 'react'
 import type { Attachment, ChecklistItem, WbsNodeData, WbsStatus } from '../collab/yjs'
 import { WBS_STATUS } from '../nodes/WbsNode'
+import { downloadFileRef, isFileRef, uploadFile } from '../api/client'
 
 interface Props {
+  /** 현재 보드 slug (파일을 이 보드에 업로드하기 위해 필요) */
+  roomSlug: string
   initial: WbsNodeData
   onSave: (patch: Partial<WbsNodeData>) => void
   onAddAttachment: (attachment: Attachment) => void
@@ -15,8 +18,8 @@ interface Props {
 
 const STATUS_ORDER: WbsStatus[] = ['todo', 'doing', 'done']
 
-/** 업로드 파일 최대 크기(2MB). Yjs 문서에 data URL 로 직접 저장되므로 과도한 용량을 막는다. */
-const MAX_FILE_SIZE = 2 * 1024 * 1024
+/** 업로드 파일 최대 크기(10MB). 서버도 같은 한도로 검사한다. */
+const MAX_FILE_SIZE = 10 * 1024 * 1024
 
 function newId() {
   return `att-${Date.now()}-${Math.floor(Math.random() * 1000)}`
@@ -31,6 +34,7 @@ function formatSize(bytes?: number) {
 
 /** WBS 노드 편집 패널: 작업명 / 담당자 / 상태 / 진행률 / 첨부(링크·파일) */
 export default function WbsEditPanel({
+  roomSlug,
   initial,
   onSave,
   onAddAttachment,
@@ -48,6 +52,7 @@ export default function WbsEditPanel({
   const [linkUrl, setLinkUrl] = useState('')
   const [linkName, setLinkName] = useState('')
   const [fileError, setFileError] = useState('')
+  const [uploading, setUploading] = useState(false)
   const [newChecklistText, setNewChecklistText] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -100,20 +105,36 @@ export default function WbsEditPanel({
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => {
-      onAddAttachment({
-        id: newId(),
-        type: 'file',
-        name: file.name,
-        url: String(reader.result), // data URL(base64)
-        size: file.size,
-        mime: file.type,
+    // 파일은 서버에 올리고, 보드 문서에는 참조 문자열(fsafile:...)만 저장한다.
+    setUploading(true)
+    uploadFile(roomSlug, file, 'file')
+      .then((uploaded) => {
+        onAddAttachment({
+          id: newId(),
+          type: 'file',
+          name: uploaded.name,
+          url: uploaded.ref,
+          size: uploaded.size,
+          mime: uploaded.mime,
+        })
       })
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-    reader.onerror = () => setFileError('파일을 읽지 못했습니다.')
-    reader.readAsDataURL(file)
+      .catch((err) => {
+        setFileError(err instanceof Error ? err.message : '파일을 올리지 못했습니다.')
+      })
+      .finally(() => {
+        setUploading(false)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+      })
+  }
+
+  /** 서버에 저장된 파일은 인증이 필요해서 링크로 바로 열 수 없다. 내려받기로 처리한다. */
+  const openAttachment = (e: React.MouseEvent, a: Attachment) => {
+    if (a.type !== 'file' || !isFileRef(a.url)) return
+    e.preventDefault()
+    setFileError('')
+    downloadFileRef(a.url, a.name).catch((err) => {
+      setFileError(err instanceof Error ? err.message : '파일을 내려받지 못했습니다.')
+    })
   }
 
   return (
@@ -240,6 +261,7 @@ export default function WbsEditPanel({
                 <li key={a.id} className="attach-item">
                   <a
                     href={a.url}
+                    onClick={(e) => openAttachment(e, a)}
                     target="_blank"
                     rel="noopener noreferrer"
                     download={a.type === 'file' ? a.name : undefined}
@@ -290,8 +312,10 @@ export default function WbsEditPanel({
 
           {/* 파일 업로드 */}
           <div className="attach-file">
-            <input ref={fileInputRef} type="file" onChange={onPickFile} />
-            <span className="attach-hint">최대 {formatSize(MAX_FILE_SIZE)}</span>
+            <input ref={fileInputRef} type="file" onChange={onPickFile} disabled={uploading} />
+            <span className="attach-hint">
+              {uploading ? '업로드 중...' : `최대 ${formatSize(MAX_FILE_SIZE)}`}
+            </span>
           </div>
           {fileError && <p className="error">{fileError}</p>}
         </div>

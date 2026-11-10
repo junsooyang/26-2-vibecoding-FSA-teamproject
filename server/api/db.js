@@ -58,6 +58,19 @@ db.exec(`
     PRIMARY KEY (user_id, room_slug),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
+
+  -- 보드에 올린 사진/첨부 파일의 메타데이터. 파일 본문은 디스크(uploads/<slug>/<id>)에 저장하고
+  -- 보드 문서(Yjs)에는 참조(fsafile:<slug>/<id>)만 둔다.
+  CREATE TABLE IF NOT EXISTS files (
+    id          TEXT PRIMARY KEY,
+    room_slug   TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    mime        TEXT NOT NULL,
+    size        INTEGER NOT NULL,
+    uploader_id INTEGER NOT NULL,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_files_room ON files(room_slug);
 `)
 
 export default db

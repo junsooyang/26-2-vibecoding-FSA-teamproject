@@ -1,6 +1,7 @@
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import type { Edge, Node } from '@xyflow/react'
+import { getToken } from '../api/client'
 
 /**
  * Yjs 기반 실시간 협업 레이어.
@@ -243,7 +244,9 @@ const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:1234'
  */
 export function connectRoom(roomName: string, user: { name: string; color: string }): CollabHandle {
   const doc = new Y.Doc()
-  const provider = new WebsocketProvider(WS_URL, roomName, doc)
+  // 실시간 서버는 접속 시 JWT 와 보드 멤버십을 검사한다. 토큰은 URL 쿼리(?token=)로 전달된다.
+  const token = getToken() ?? ''
+  const provider = new WebsocketProvider(WS_URL, roomName, doc, { params: { token } })
 
   const nodes = doc.getMap<BoardNode>('nodes')
   const edges = doc.getMap<BoardEdge>('edges')

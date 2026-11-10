@@ -50,8 +50,16 @@ export interface RemoteCursor {
  *  2. Yjs 가 바뀌면 observe 콜백이 React state 로 밀어 넣는다. (원격 변경 반영)
  *  3. 사용자가 React Flow 를 조작하면(드래그/연결/추가) Yjs 에 써넣는다. (로컬 변경 전파)
  */
-export function useCollabBoard(roomName: string, user: AwarenessUser) {
+export function useCollabBoard(
+  roomName: string,
+  user: AwarenessUser,
+  /** 서버가 접근을 끊었을 때 호출 (deleted: 보드 삭제됨, forbidden: 멤버에서 제외됨) */
+  onAccessLost?: (reason: 'deleted' | 'forbidden') => void,
+) {
   const handleRef = useRef<CollabHandle | null>(null)
+  // 최신 콜백을 ref 로 들고 있어 재연결 없이도 항상 최신 함수를 호출한다.
+  const accessLostRef = useRef(onAccessLost)
+  accessLostRef.current = onAccessLost
   const [nodes, setNodes] = useState<BoardNode[]>([])
   const [edges, setEdges] = useState<BoardEdge[]>([])
   const [peers, setPeers] = useState<AwarenessUser[]>([])
@@ -115,6 +123,15 @@ export function useCollabBoard(roomName: string, user: AwarenessUser) {
 
     handle.provider.on('status', (e: { status: string }) => {
       setConnected(e.status === 'connected')
+    })
+
+    // 서버가 보드 삭제(4404) / 권한 상실(4403)로 연결을 닫으면 재접속을 멈추고 알린다.
+    handle.provider.on('connection-close', (event: CloseEvent | null) => {
+      if (!event) return
+      if (event.code === 4404 || event.code === 4403) {
+        handle.provider.disconnect()
+        accessLostRef.current?.(event.code === 4404 ? 'deleted' : 'forbidden')
+      }
     })
 
     const myClientId = handle.awareness.clientID

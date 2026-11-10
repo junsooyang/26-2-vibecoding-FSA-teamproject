@@ -12,6 +12,7 @@ import cors from 'cors'
 import authRouter from './auth.js'
 import roomsRouter from './rooms.js'
 import personalRouter from './personal.js'
+import filesRouter from './files.js'
 
 const port = Number(process.env.API_PORT) || 3001
 
@@ -24,6 +25,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }))
 app.use('/api/auth', authRouter)
 app.use('/api/rooms', roomsRouter)
 app.use('/api/personal', personalRouter)
+app.use('/api/files', filesRouter)
 
 // JSON 파싱 오류 등 공통 에러 핸들러
 app.use((err, _req, res, _next) => {

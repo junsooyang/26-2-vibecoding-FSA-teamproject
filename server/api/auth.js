@@ -7,8 +7,8 @@ import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 import db from './db.js'
 
-// 운영에서는 반드시 환경변수로 주입할 것. (개발 편의용 기본값)
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-insecure-secret-change-me'
+import { JWT_SECRET } from '../config.js'
+
 const TOKEN_TTL = '7d'
 
 // 아이디 형식: 영문/숫자/밑줄(_), 3~20자

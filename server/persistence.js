@@ -50,10 +50,28 @@ function loadState(roomName) {
   return row.state instanceof Uint8Array ? row.state : new Uint8Array(row.state)
 }
 
-/** 현재 Yjs 문서 상태를 통째로 DB 에 저장한다. */
+/**
+ * 보드(rooms 테이블)가 아직 존재하는지 확인한다.
+ * 삭제된 보드의 문서를 마지막 접속자가 나갈 때 다시 저장해 되살리는 일을 막기 위함이다.
+ * rooms 테이블 자체가 없거나 조회에 실패하면(= API 서버가 아직 DB 를 만들기 전) 기존처럼 저장한다.
+ */
+function roomStillExists(roomName) {
+  try {
+    return !!db.prepare('SELECT 1 AS ok FROM rooms WHERE slug = ?').get(roomName)
+  } catch {
+    return true
+  }
+}
+
+/** 현재 Yjs 문서 상태를 통째로 DB 에 저장한다. (삭제된 보드는 저장하지 않는다) */
 function saveState(roomName, ydoc) {
+  if (!roomStillExists(roomName)) {
+    console.log(`[persistence] 방 '${roomName}' 은(는) 삭제되어 저장하지 않습니다.`)
+    return false
+  }
   const update = Y.encodeStateAsUpdate(ydoc)
   upsertStmt.run(roomName, update, Date.now())
+  return true
 }
 
 // 방별 debounce 타이머 관리
@@ -102,8 +120,9 @@ export const persistence = {
       timers.delete(roomName)
     }
     try {
-      saveState(roomName, ydoc)
-      console.log(`[persistence] 방 '${roomName}' 최종 저장 완료`)
+      if (saveState(roomName, ydoc)) {
+        console.log(`[persistence] 방 '${roomName}' 최종 저장 완료`)
+      }
     } catch (err) {
       console.error(`[persistence] 방 '${roomName}' 최종 저장 실패:`, err)
     }

@@ -17,6 +17,9 @@ pnpm-debug.log*
 .env.local
 .env.*.local
 
+# 업로드된 사진/첨부 파일 (서버 로컬 데이터 - 커밋하지 않음)
+uploads/
+
 # SQLite database (서버 로컬 데이터 - 커밋하지 않음)
 *.db
 *.db-journal

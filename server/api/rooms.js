@@ -10,6 +10,7 @@
 import express from 'express'
 import db from './db.js'
 import { requireAuth } from './auth.js'
+import { removeRoomFiles } from './files.js'
 
 const router = express.Router()
 router.use(requireAuth)
@@ -195,6 +196,7 @@ router.delete('/:slug', loadRoomMembership, (req, res) => {
   try {
     db.prepare('DELETE FROM personal_spaces WHERE room_slug = ?').run(req.room.slug)
     db.prepare('DELETE FROM docs WHERE name = ?').run(req.room.slug)
+    removeRoomFiles(req.room.slug) // 업로드된 사진/첨부 파일(디스크 + 기록)
   } catch (err) {
     console.warn('[api] 방 부속 데이터 정리 중 경고:', err instanceof Error ? err.message : err)
   }
