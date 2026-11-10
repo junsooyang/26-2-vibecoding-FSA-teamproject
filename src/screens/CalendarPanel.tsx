@@ -25,9 +25,11 @@ interface Props {
   deadlines: WbsDeadline[]
   /** WBS 마감 항목의 체크 → 해당 작업 완료/해제 */
   onToggleDeadline: (nodeId: string) => void
-  onAdd: (date: string, text: string) => void
+  /** 담당자 입력 자동완성에 쓸 보드 멤버 이름 */
+  memberNames?: string[]
+  onAdd: (date: string, text: string, extra: { time?: string; assignee?: string }) => void
   onToggle: (id: string) => void
-  onEdit: (id: string, text: string) => void
+  onEdit: (id: string, patch: { text: string; time?: string; assignee?: string }) => void
   onDelete: (id: string) => void
   onClose: () => void
 }
@@ -54,6 +56,7 @@ export default function CalendarPanel({
   events,
   deadlines,
   onToggleDeadline,
+  memberNames = [],
   onAdd,
   onToggle,
   onEdit,
@@ -68,9 +71,15 @@ export default function CalendarPanel({
   const [selected, setSelected] = useState(todayIso)
   // 새 일정 입력값
   const [text, setText] = useState('')
+  const [time, setTime] = useState('')
+  const [assignee, setAssignee] = useState('')
   // 수정 중인 일정
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
+  const [editingTime, setEditingTime] = useState('')
+  const [editingAssignee, setEditingAssignee] = useState('')
+  // 담당자 자동완성 목록 id (같은 화면에 여러 패널이 있어도 겹치지 않게)
+  const datalistId = 'cal-assignee-options'
 
   const year = cursor.getFullYear()
   const month = cursor.getMonth() // 0-based
@@ -131,19 +140,23 @@ export default function CalendarPanel({
     e.preventDefault()
     const t = text.trim()
     if (!t) return
-    onAdd(selected, t)
+    onAdd(selected, t, { time, assignee })
     setText('')
+    setTime('')
+    setAssignee('')
   }
 
   const startEdit = (ev: CalendarEvent) => {
     setEditingId(ev.id)
     setEditingText(ev.text)
+    setEditingTime(ev.time ?? '')
+    setEditingAssignee(ev.assignee ?? '')
   }
 
   const saveEdit = () => {
     if (!editingId) return
     const t = editingText.trim()
-    if (t) onEdit(editingId, t)
+    if (t) onEdit(editingId, { text: t, time: editingTime, assignee: editingAssignee })
     setEditingId(null)
     setEditingText('')
   }
@@ -243,25 +256,43 @@ export default function CalendarPanel({
             return (
               <div key={ev.id} className={ev.done ? 'cal-event done' : 'cal-event'}>
                 {isEditing ? (
-                  <div className="cal-event-edit">
+                  <div
+                    className="cal-event-edit"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        saveEdit()
+                      }
+                      if (e.key === 'Escape') setEditingId(null)
+                    }}
+                  >
                     <input
                       value={editingText}
                       autoFocus
+                      aria-label="일정 내용"
                       onChange={(e) => setEditingText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          saveEdit()
-                        }
-                        if (e.key === 'Escape') setEditingId(null)
-                      }}
                     />
-                    <button type="button" onClick={saveEdit} disabled={!editingText.trim()}>
-                      저장
-                    </button>
-                    <button type="button" className="ghost" onClick={() => setEditingId(null)}>
-                      취소
-                    </button>
+                    <div className="cal-extra-row">
+                      <input
+                        type="time"
+                        value={editingTime}
+                        aria-label="시간 (선택)"
+                        onChange={(e) => setEditingTime(e.target.value)}
+                      />
+                      <input
+                        value={editingAssignee}
+                        list={datalistId}
+                        placeholder="담당자 (선택)"
+                        aria-label="담당자 (선택)"
+                        onChange={(e) => setEditingAssignee(e.target.value)}
+                      />
+                      <button type="button" onClick={saveEdit} disabled={!editingText.trim()}>
+                        저장
+                      </button>
+                      <button type="button" className="ghost" onClick={() => setEditingId(null)}>
+                        취소
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -271,7 +302,11 @@ export default function CalendarPanel({
                         checked={ev.done}
                         onChange={() => onToggle(ev.id)}
                       />
-                      <span className="cal-event-text">{ev.text}</span>
+                      <span className="cal-event-text">
+                        {ev.time && <span className="cal-time">{ev.time}</span>}
+                        {ev.text}
+                        {ev.assignee && <span className="cal-assignee">👤 {ev.assignee}</span>}
+                      </span>
                     </label>
                     <span className="cal-event-actions">
                       <button type="button" className="cal-link" onClick={() => startEdit(ev)}>
@@ -297,12 +332,36 @@ export default function CalendarPanel({
         <input
           value={text}
           placeholder={`${formatDateLabel(selected)} 일정 추가`}
+          aria-label="일정 내용"
           onChange={(e) => setText(e.target.value)}
         />
-        <button type="submit" disabled={!text.trim()}>
-          추가
-        </button>
+        <div className="cal-extra-row">
+          <input
+            type="time"
+            value={time}
+            aria-label="시간 (선택)"
+            title="시간 (선택, 비우면 하루 종일)"
+            onChange={(e) => setTime(e.target.value)}
+          />
+          <input
+            value={assignee}
+            list={datalistId}
+            placeholder="담당자 (선택)"
+            aria-label="담당자 (선택)"
+            onChange={(e) => setAssignee(e.target.value)}
+          />
+          <button type="submit" disabled={!text.trim()}>
+            추가
+          </button>
+        </div>
       </form>
+
+      {/* 담당자 자동완성: 보드 멤버 이름 */}
+      <datalist id={datalistId}>
+        {memberNames.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
     </aside>
   )
 }

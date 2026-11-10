@@ -48,6 +48,7 @@ export default function WbsEditPanel({
   const [assignee, setAssignee] = useState(initial.assignee)
   const [status, setStatus] = useState<WbsStatus>(initial.status)
   const [progress, setProgress] = useState(initial.progress)
+  const [start, setStart] = useState(initial.start ?? '')
   const [due, setDue] = useState(initial.due ?? '')
   const [linkUrl, setLinkUrl] = useState('')
   const [linkName, setLinkName] = useState('')
@@ -68,9 +69,20 @@ export default function WbsEditPanel({
     setNewChecklistText('')
   }
 
+  // 시작일이 마감일보다 늦으면 저장하지 않는다 (간트차트 막대가 거꾸로 그려지는 것 방지)
+  const dateError = start && due && start > due ? '시작일이 마감일보다 늦어요.' : ''
+
   const save = (e: React.FormEvent) => {
     e.preventDefault()
-    onSave({ label: label.trim() || '새 작업', assignee: assignee.trim(), status, progress, due })
+    if (dateError) return
+    onSave({
+      label: label.trim() || '새 작업',
+      assignee: assignee.trim(),
+      status,
+      progress,
+      start,
+      due,
+    })
     onClose()
   }
 
@@ -162,10 +174,31 @@ export default function WbsEditPanel({
             />
           </label>
 
-          <label>
-            마감일
-            <input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
-          </label>
+          <div className="wbs-date-row">
+            <label>
+              시작일
+              <input
+                type="date"
+                value={start}
+                max={due || undefined}
+                onChange={(e) => setStart(e.target.value)}
+              />
+            </label>
+            <label>
+              마감일
+              <input
+                type="date"
+                value={due}
+                min={start || undefined}
+                onChange={(e) => setDue(e.target.value)}
+              />
+            </label>
+          </div>
+          {dateError && (
+            <p className="error" role="alert">
+              {dateError}
+            </p>
+          )}
 
           <div className="field-label">상태</div>
           <div className="status-group">
@@ -198,7 +231,9 @@ export default function WbsEditPanel({
             />
           </label>
 
-          <button type="submit">저장</button>
+          <button type="submit" disabled={!!dateError}>
+            저장
+          </button>
         </form>
 
         {/* ---------- 세부 체크항목(서브태스크) ---------- */}

@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  applyNodeChanges,
-  applyEdgeChanges,
-  addEdge,
-  type Connection,
-  type EdgeChange,
-  type NodeChange,
-} from '@xyflow/react'
+import { addEdge, type Connection, type EdgeChange, type NodeChange } from '@xyflow/react'
 import {
   connectRoom,
   isWbsData,
@@ -27,6 +20,32 @@ import {
   type WbsNodeData,
 } from './yjs'
 import { layoutNodes, type LayoutDirection } from './layout'
+import { UndoManager } from 'yjs'
+import {
+  applyEdgeChangesToBoard,
+  applyNodeChangesToBoard,
+  mergeNodeUi,
+  stripUi,
+  type NodeUi,
+} from './boardChanges'
+import {
+  describeCalendar,
+  describeEdge,
+  describeNodeAdd,
+  describeNodeDelete,
+  describeNodeUpdate,
+  draftsFromMapChanges,
+  recordActivity,
+  type ActivityDraft,
+  type ActivityEntry,
+} from './activity'
+import type * as Y from 'yjs'
+
+/** 'HH:MM' 형식만 받는다. 형식이 아니면 빈 값 (시간 없는 일정) */
+function normalizeTime(time: string | undefined): string {
+  const t = time?.trim() ?? ''
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(t) ? t : ''
+}
 
 export interface AwarenessUser {
   name: string
@@ -55,13 +74,35 @@ export function useCollabBoard(
   user: AwarenessUser,
   /** 서버가 접근을 끊었을 때 호출 (deleted: 보드 삭제됨, forbidden: 멤버에서 제외됨) */
   onAccessLost?: (reason: 'deleted' | 'forbidden') => void,
+  /** 변경 기록에 남길 내 username (기여도 집계 기준) */
+  username = '',
 ) {
   const handleRef = useRef<CollabHandle | null>(null)
   // 최신 콜백을 ref 로 들고 있어 재연결 없이도 항상 최신 함수를 호출한다.
   const accessLostRef = useRef(onAccessLost)
   accessLostRef.current = onAccessLost
-  const [nodes, setNodes] = useState<BoardNode[]>([])
-  const [edges, setEdges] = useState<BoardEdge[]>([])
+  // 변경 기록용 "나" (재연결 없이 최신 값 사용)
+  const actorRef = useRef({ username, name: user.name })
+  actorRef.current = { username, name: user.name }
+  const [activity, setActivity] = useState<ActivityEntry[]>([])
+  // 공유 문서(Yjs)에 있는 그대로의 노드/연결선
+  const [rawNodes, setNodes] = useState<BoardNode[]>([])
+  const [rawEdges, setEdges] = useState<BoardEdge[]>([])
+  // 내 화면에만 두는 선택/크기 상태 (바뀌면 uiVersion 을 올려 다시 그린다)
+  const nodeUiRef = useRef(new Map<string, NodeUi>())
+  const edgeSelectedRef = useRef(new Map<string, boolean>())
+  const [uiVersion, setUiVersion] = useState(0)
+  // React Flow 와 화면에 넘길 노드/연결선 = 공유 데이터 + 내 화면 상태
+  const nodes = useMemo(
+    () => rawNodes.map((n) => mergeNodeUi(n, nodeUiRef.current.get(n.id))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rawNodes, uiVersion],
+  )
+  const edges = useMemo(
+    () => rawEdges.map((e) => ({ ...e, selected: edgeSelectedRef.current.get(e.id) ?? false })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rawEdges, uiVersion],
+  )
   const [peers, setPeers] = useState<AwarenessUser[]>([])
   const [cursors, setCursors] = useState<RemoteCursor[]>([])
   const [polls, setPolls] = useState<Poll[]>([])
@@ -69,11 +110,33 @@ export function useCollabBoard(
   const [calendar, setCalendar] = useState<CalendarEvent[]>([])
   const [edgeStyle, setEdgeStyleState] = useState<EdgeStyle>({ color: '#6366f1', width: 2.5 })
   const [connected, setConnected] = useState(false)
+  // 서버의 보드 내용을 처음 다 받았는지 (마감 알림 등 "접속 직후" 판단에 사용)
+  const [synced, setSynced] = useState(false)
+  const undoManagerRef = useRef<UndoManager | null>(null)
+  const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
 
   // 방 연결 + Yjs 관찰자 등록
   useEffect(() => {
     const handle = connectRoom(roomName, user)
     handleRef.current = handle
+
+    // 실행 취소 관리자: 노드와 연결선만 대상. 기본적으로 origin 이 null 인 "내 변경"만 기록하므로
+    // 서버에서 받은 다른 팀원의 변경(origin = provider)은 되돌리지 않는다.
+    // 0.5초 안에 이어진 변경(드래그 중 위치 이동, 노드 삭제 + 연결선 삭제 등)은 한 번에 되돌린다.
+    const undoManager = new UndoManager([handle.nodes, handle.edges], { captureTimeout: 500 })
+    undoManagerRef.current = undoManager
+    const syncUndoState = () => {
+      setCanUndo(undoManager.undoStack.length > 0)
+      setCanRedo(undoManager.redoStack.length > 0)
+    }
+    undoManager.on('stack-item-added', syncUndoState)
+    undoManager.on('stack-item-popped', syncUndoState)
+    undoManager.on('stack-cleared', syncUndoState)
+    syncUndoState()
+
+    setSynced(handle.provider.synced)
+    handle.provider.on('sync', (isSynced: boolean) => setSynced(isSynced))
 
     const syncNodes = () => setNodes(Array.from(handle.nodes.values()))
     const syncEdges = () => setEdges(Array.from(handle.edges.values()))
@@ -98,7 +161,13 @@ export function useCollabBoard(
             (e): e is CalendarEvent =>
               !!e && typeof (e as CalendarEvent).id === 'string' && typeof (e as CalendarEvent).date === 'string',
           )
-          .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt),
+          // 날짜 → 시각(시간 없는 일정은 그날 맨 앞) → 만든 순서
+          .sort(
+            (a, b) =>
+              a.date.localeCompare(b.date) ||
+              (a.time ?? '').localeCompare(b.time ?? '') ||
+              a.createdAt - b.createdAt,
+          ),
       )
     const syncMeta = () => {
       const es = handle.meta.get('edgeStyle') as Partial<EdgeStyle> | undefined
@@ -113,6 +182,62 @@ export function useCollabBoard(
     handle.chat.observe(syncChat)
     handle.calendar.observe(syncCalendar)
     handle.meta.observe(syncMeta)
+
+    // --- 변경 기록 ---
+    // 내 브라우저에서 일어난 변경(tx.local)만 기록한다. 다른 팀원의 변경은 그 팀원의 브라우저가 기록한다.
+    // 실행 취소/다시 실행으로 바뀐 것도 "내가 한 변경"이라 기록되며, 설명 뒤에 표시를 붙인다.
+    const syncActivity = () =>
+      setActivity(
+        handle.activity
+          .toArray()
+          .filter((e): e is ActivityEntry => !!e && typeof (e as ActivityEntry).id === 'string'),
+      )
+    const withUndoMark = (drafts: ActivityDraft[], tx: Y.Transaction) =>
+      tx.origin === undoManager
+        ? drafts.map((d) => ({ ...d, detail: `${d.detail} (실행 취소/다시 실행)` }))
+        : drafts
+    const logNodes = (event: Y.YMapEvent<BoardNode>, tx: Y.Transaction) => {
+      if (!tx.local) return
+      const drafts = draftsFromMapChanges<BoardNode>(
+        event.changes.keys,
+        (k) => handle.nodes.get(k),
+        (oldNode, newNode) => {
+          if (!oldNode && newNode) return describeNodeAdd(newNode)
+          if (oldNode && !newNode) return describeNodeDelete(oldNode)
+          if (oldNode && newNode) return describeNodeUpdate(oldNode, newNode)
+          return null
+        },
+      )
+      recordActivity(handle.doc, handle.activity, withUndoMark(drafts, tx), actorRef.current)
+    }
+    const logEdges = (event: Y.YMapEvent<BoardEdge>, tx: Y.Transaction) => {
+      if (!tx.local) return
+      const getNode = (id: string) => handle.nodes.get(id)
+      const drafts = draftsFromMapChanges<BoardEdge>(
+        event.changes.keys,
+        (k) => handle.edges.get(k),
+        (oldEdge, newEdge) => {
+          if (!oldEdge && newEdge) return describeEdge(newEdge, true, getNode)
+          if (oldEdge && !newEdge) return describeEdge(oldEdge, false, getNode)
+          return null // 연결선 자체 수정은 기록하지 않음
+        },
+      )
+      recordActivity(handle.doc, handle.activity, withUndoMark(drafts, tx), actorRef.current)
+    }
+    const logCalendar = (event: Y.YMapEvent<CalendarEvent>, tx: Y.Transaction) => {
+      if (!tx.local) return
+      const drafts = draftsFromMapChanges<CalendarEvent>(
+        event.changes.keys,
+        (k) => handle.calendar.get(k),
+        describeCalendar,
+      )
+      recordActivity(handle.doc, handle.activity, drafts, actorRef.current)
+    }
+    handle.activity.observe(syncActivity)
+    handle.nodes.observe(logNodes)
+    handle.edges.observe(logEdges)
+    handle.calendar.observe(logCalendar)
+    syncActivity()
     // 초기 상태 반영
     syncNodes()
     syncEdges()
@@ -169,8 +294,14 @@ export function useCollabBoard(
       handle.poll.unobserve(syncPoll)
       handle.chat.unobserve(syncChat)
       handle.calendar.unobserve(syncCalendar)
+      handle.activity.unobserve(syncActivity)
+      handle.nodes.unobserve(logNodes)
+      handle.edges.unobserve(logEdges)
+      handle.calendar.unobserve(logCalendar)
       handle.meta.unobserve(syncMeta)
       handle.awareness.off('change', syncAwareness)
+      undoManager.destroy()
+      undoManagerRef.current = null
       handle.destroy()
       handleRef.current = null
     }
@@ -202,41 +333,51 @@ export function useCollabBoard(
 
   // --- 로컬 조작 -> Yjs 반영 ---
 
+  // 선택/크기 측정은 내 화면 상태로, 이동/삭제/추가는 공유 문서로 (자세한 설명은 boardChanges.ts)
   const onNodesChange = useCallback((changes: NodeChange<BoardNode>[]) => {
     const handle = handleRef.current
     if (!handle) return
-    const next = applyNodeChanges(changes, Array.from(handle.nodes.values()))
-    handle.doc.transact(() => {
-      // 삭제 처리
-      const nextIds = new Set(next.map((n) => n.id))
-      for (const id of handle.nodes.keys()) {
-        if (!nextIds.has(id)) handle.nodes.delete(id)
-      }
-      // 추가/갱신 (위치 이동 포함)
-      for (const n of next) handle.nodes.set(n.id, n)
-    })
+    const { uiChanged } = applyNodeChangesToBoard(
+      handle.doc,
+      handle.nodes,
+      nodeUiRef.current,
+      changes,
+    )
+    if (uiChanged) setUiVersion((v) => v + 1)
   }, [])
 
   const onEdgesChange = useCallback((changes: EdgeChange<BoardEdge>[]) => {
     const handle = handleRef.current
     if (!handle) return
-    const next = applyEdgeChanges(changes, Array.from(handle.edges.values()))
-    handle.doc.transact(() => {
-      const nextIds = new Set(next.map((e) => e.id))
-      for (const id of handle.edges.keys()) {
-        if (!nextIds.has(id)) handle.edges.delete(id)
-      }
-      for (const e of next) handle.edges.set(e.id, e)
-    })
+    const { uiChanged } = applyEdgeChangesToBoard(
+      handle.doc,
+      handle.edges,
+      edgeSelectedRef.current,
+      changes,
+    )
+    if (uiChanged) setUiVersion((v) => v + 1)
   }, [])
 
   const onConnect = useCallback((connection: Connection) => {
     const handle = handleRef.current
     if (!handle) return
-    const next = addEdge(connection, Array.from(handle.edges.values()))
+    const prev = Array.from(handle.edges.values())
+    const prevIds = new Set(prev.map((e) => e.id))
+    const next = addEdge(connection, prev)
     handle.doc.transact(() => {
-      for (const e of next) handle.edges.set(e.id, e)
+      // 새로 생긴 연결선만 쓴다
+      for (const e of next) {
+        if (!prevIds.has(e.id)) handle.edges.set(e.id, e)
+      }
     })
+  }, [])
+
+  // --- 실행 취소 / 다시 실행 (내 변경만, 노드·연결선 대상) ---
+  const undo = useCallback(() => {
+    undoManagerRef.current?.undo()
+  }, [])
+  const redo = useCallback(() => {
+    undoManagerRef.current?.redo()
   }, [])
 
   /** 새 노드(아이디어) 추가 */
@@ -346,11 +487,14 @@ export function useCollabBoard(
   const applyLayout = useCallback((direction: LayoutDirection = 'LR') => {
     const handle = handleRef.current
     if (!handle) return
-    const current = Array.from(handle.nodes.values())
+    // 정렬에는 실제 렌더 크기가 필요하다. 크기 측정값은 내 화면 상태에 있으므로 합쳐서 넘긴다.
+    const current = Array.from(handle.nodes.values()).map((n) =>
+      mergeNodeUi(n, nodeUiRef.current.get(n.id)),
+    )
     const currentEdges = Array.from(handle.edges.values())
     const laid = layoutNodes(current, currentEdges, direction)
     handle.doc.transact(() => {
-      for (const n of laid) handle.nodes.set(n.id, n)
+      for (const n of laid) handle.nodes.set(n.id, stripUi(n))
     })
   }, [])
 
@@ -714,21 +858,33 @@ export function useCollabBoard(
   }, [])
 
   /** 캘린더 일정 추가 (특정 날짜에) */
-  const addCalendarEvent = useCallback((date: string, text: string, createdBy: string) => {
-    const handle = handleRef.current
-    const trimmed = text.trim()
-    if (!handle || !date || !trimmed) return
-    const id = `cal-${Date.now()}-${Math.floor(Math.random() * 1000)}`
-    const event: CalendarEvent = {
-      id,
-      date,
-      text: trimmed,
-      done: false,
-      createdBy,
-      createdAt: Date.now(),
-    }
-    handle.calendar.set(id, event)
-  }, [])
+  const addCalendarEvent = useCallback(
+    (
+      date: string,
+      text: string,
+      createdBy: string,
+      extra: { time?: string; assignee?: string } = {},
+    ) => {
+      const handle = handleRef.current
+      const trimmed = text.trim()
+      if (!handle || !date || !trimmed) return
+      const id = `cal-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+      const event: CalendarEvent = {
+        id,
+        date,
+        text: trimmed,
+        done: false,
+        createdBy,
+        createdAt: Date.now(),
+      }
+      const time = normalizeTime(extra.time)
+      const assignee = extra.assignee?.trim()
+      if (time) event.time = time
+      if (assignee) event.assignee = assignee
+      handle.calendar.set(id, event)
+    },
+    [],
+  )
 
   /** 캘린더 일정 완료 체크 토글 */
   const toggleCalendarEvent = useCallback((id: string) => {
@@ -740,14 +896,25 @@ export function useCollabBoard(
   }, [])
 
   /** 캘린더 일정 내용 수정 */
-  const editCalendarEvent = useCallback((id: string, text: string) => {
-    const handle = handleRef.current
-    const trimmed = text.trim()
-    if (!handle || !trimmed) return
-    const existing = handle.calendar.get(id)
-    if (!existing) return
-    handle.calendar.set(id, { ...existing, text: trimmed })
-  }, [])
+  const editCalendarEvent = useCallback(
+    (id: string, patch: { text: string; time?: string; assignee?: string }) => {
+      const handle = handleRef.current
+      const trimmed = patch.text.trim()
+      if (!handle || !trimmed) return
+      const existing = handle.calendar.get(id)
+      if (!existing) return
+      // 비운 칸은 필드 자체를 지워 "시간 없음 / 담당자 없음" 으로 되돌린다
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { time: _oldTime, assignee: _oldAssignee, ...rest } = existing
+      const next: CalendarEvent = { ...rest, text: trimmed }
+      const time = normalizeTime(patch.time)
+      const assignee = patch.assignee?.trim()
+      if (time) next.time = time
+      if (assignee) next.assignee = assignee
+      handle.calendar.set(id, next)
+    },
+    [],
+  )
 
   /** 캘린더 일정 삭제 */
   const deleteCalendarEvent = useCallback((id: string) => {
@@ -795,6 +962,11 @@ export function useCollabBoard(
       peers,
       cursors,
       connected,
+      synced,
+      undo,
+      redo,
+      canUndo,
+      canRedo,
       onNodesChange,
       onEdgesChange,
       onConnect,
@@ -830,6 +1002,7 @@ export function useCollabBoard(
       sendChatMessage,
       editChatMessage,
       deleteChatMessage,
+      activity,
       calendar,
       addCalendarEvent,
       toggleCalendarEvent,
@@ -846,6 +1019,11 @@ export function useCollabBoard(
       peers,
       cursors,
       connected,
+      synced,
+      undo,
+      redo,
+      canUndo,
+      canRedo,
       onNodesChange,
       onEdgesChange,
       onConnect,
@@ -881,6 +1059,7 @@ export function useCollabBoard(
       sendChatMessage,
       editChatMessage,
       deleteChatMessage,
+      activity,
       calendar,
       addCalendarEvent,
       toggleCalendarEvent,

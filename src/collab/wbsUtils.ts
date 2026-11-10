@@ -2,6 +2,18 @@
 
 export type DueState = 'none' | 'overdue' | 'soon' | 'normal'
 
+/**
+ * 담당자 칸을 사람 단위로 나눈다. 담당자는 자유 입력이라 "철수, 영희" / "철수/영희" 처럼
+ * 여러 명을 적을 수 있으므로 쉼표·슬래시·가운뎃점·& 로 구분한다.
+ */
+export function splitAssignees(assignee: string | undefined): string[] {
+  if (!assignee) return []
+  return assignee
+    .split(/[,/·&]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
 /** 로컬 자정 기준 '오늘'의 타임스탬프 */
 function todayStart(): number {
   const d = new Date()
@@ -27,6 +39,14 @@ export function dueState(due: string | undefined, done: boolean): DueState {
   if (target < today) return 'overdue'
   if (target <= today + 3 * dayMs) return 'soon'
   return 'normal'
+}
+
+/** 오늘로부터 offsetDays 만큼 떨어진 날짜를 로컬 기준 'YYYY-MM-DD' 로 (마감일 문자열과 같은 형식) */
+export function localIsoDate(offsetDays = 0): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 /** 마감일을 'M/D' 짧은 형식으로 표시 */

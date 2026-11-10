@@ -31,6 +31,10 @@ import WbsEditPanel from './screens/WbsEditPanel'
 import CommentsPanel from './screens/CommentsPanel'
 import ChatPanel from './screens/ChatPanel'
 import DeleteBoardModal from './screens/DeleteBoardModal'
+import DeadlineAlert from './screens/DeadlineAlert'
+import GanttPanel, { type GanttTask } from './screens/GanttPanel'
+import HistoryPanel from './screens/HistoryPanel'
+import { dueBadge, localIsoDate, splitAssignees } from './collab/wbsUtils'
 import CalendarPanel, { type WbsDeadline } from './screens/CalendarPanel'
 import PersonalSpacePanel from './screens/PersonalSpacePanel'
 import DashboardPanel from './screens/DashboardPanel'
@@ -41,8 +45,10 @@ import {
   downloadDataUrl,
   exportFilename,
   savePngAsPdf,
+  downloadTextFile,
 } from './collab/exportBoard'
-import WbsNode from './nodes/WbsNode'
+import { toCsv } from './collab/csv'
+import WbsNode, { WBS_STATUS } from './nodes/WbsNode'
 import ImageNode from './nodes/ImageNode'
 import StickyNode from './nodes/StickyNode'
 import LiveCursors from './nodes/LiveCursors'
@@ -80,6 +86,10 @@ const EDGE_WIDTHS: { label: string; value: number }[] = [
   { label: '매우 굵게', value: 6 },
 ]
 
+/** 담당자 필터 특수 값 (실제 이름과 겹치지 않도록 접두어 사용) */
+const FILTER_MINE = '__mine__'
+const FILTER_UNASSIGNED = '__unassigned__'
+
 /** 두 노드가 화면상에서 겹치는지 판정 (중심점이 대상 노드 박스 안에 있는지) */
 function overlaps(a: BoardNode, b: BoardNode): boolean {
   const aw = a.measured?.width ?? 200
@@ -110,12 +120,18 @@ interface BoardProps {
 function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   // 내 역할 (서버에서 확인). 팀장(owner)에게만 보드 삭제 버튼을 보여준다.
   const [isOwner, setIsOwner] = useState(false)
+  // 보드 멤버 이름 목록 (캘린더 담당자 자동완성 등에 사용)
+  const [memberNames, setMemberNames] = useState<string[]>([])
+  // 역할/멤버 다시 불러오기: 입장 시 + 더보기를 열 때 (다른 팀원이 나에게 팀장을 맡겼을 수 있음)
+  const [roleCheckTick, setRoleCheckTick] = useState(0)
   useEffect(() => {
     let alive = true
     api
       .getRoom(room)
       .then((res) => {
-        if (alive) setIsOwner(res.role === 'owner')
+        if (!alive) return
+        setIsOwner(res.role === 'owner')
+        setMemberNames(res.members.filter((m) => m.role !== 'invited').map((m) => m.name))
       })
       .catch(() => {
         if (alive) setIsOwner(false)
@@ -123,7 +139,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     return () => {
       alive = false
     }
-  }, [room])
+  }, [room, roleCheckTick])
 
   // 보드 삭제 확인 모달 상태 (팀장 전용 — 서버도 owner 가 아니면 403 으로 거부한다)
   const [showDeleteBoard, setShowDeleteBoard] = useState(false)
@@ -148,9 +164,11 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   }, [room, onLeave])
 
   // 서버가 연결을 끊은 경우 (다른 팀원이 보드를 삭제했거나, 내가 멤버에서 제외됨)
+  // 내가 스스로 나가는 중이면, 서버가 연결을 끊을 때 뜨는 "제외됨" 알림도 건너뛴다.
+  const leavingByMeRef = useRef(false)
   const handleAccessLost = useCallback(
     (reason: 'deleted' | 'forbidden') => {
-      if (deletingByMeRef.current) return
+      if (deletingByMeRef.current || leavingByMeRef.current) return
       window.alert(
         reason === 'deleted'
           ? '팀장이 이 보드를 삭제했어요. 보드 목록으로 돌아갑니다.'
@@ -180,6 +198,10 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [showChat, setShowChat] = useState(false)
   // 캘린더 패널 열림 여부
   const [showCalendar, setShowCalendar] = useState(false)
+  // 간트차트 열림 여부
+  const [showGantt, setShowGantt] = useState(false)
+  // 변경 기록 패널 열림 여부
+  const [showHistory, setShowHistory] = useState(false)
   // 부가 기능(사진/정렬/개인공간 등) 더보기 펼침 여부
   const [showMore, setShowMore] = useState(false)
   // 공유(이미지/PDF 저장) 메뉴 펼침 여부
@@ -199,6 +221,11 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     peers,
     cursors,
     connected,
+    synced,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     onNodesChange,
     onEdgesChange,
     onConnect,
@@ -242,7 +269,71 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     setEdgeStyle,
     resizeNode,
     toggleCollapse,
-  } = useCollabBoard(room, user, handleAccessLost)
+    activity,
+  } = useCollabBoard(room, user, handleAccessLost, username)
+
+  // --- 실행 취소 / 다시 실행 단축키 ---
+  // 입력창에서 글자를 고치는 중이면 브라우저 기본 동작(글자 되돌리기)을 그대로 둔다.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return
+      const target = e.target as HTMLElement | null
+      if (
+        target &&
+        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      ) {
+        return
+      }
+      const key = e.key.toLowerCase()
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault()
+        redo()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [undo, redo])
+
+  // --- 채팅 안 읽은 메시지 ---
+  // 마지막으로 읽은 메시지(id + 시각)를 사용자·보드별로 이 브라우저에 저장한다.
+  const chatReadKey = `chat-read:${username}:${room}`
+  const [chatLastRead, setChatLastRead] = useState<{ id: string | null; at: number }>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(chatReadKey) ?? 'null')
+      if (saved && typeof saved.at === 'number') {
+        return { id: typeof saved.id === 'string' ? saved.id : null, at: saved.at }
+      }
+    } catch {
+      // 저장값이 깨졌으면 처음부터
+    }
+    return { id: null, at: 0 }
+  })
+
+  const unreadChatCount = useMemo(() => {
+    const fromOthers = (m: { authorUsername: string }) => m.authorUsername !== username
+    // 마지막으로 읽은 메시지가 남아 있으면 그 뒤의 메시지만 센다 (기기 간 시계 차이에 영향받지 않음)
+    const idx = chatLastRead.id ? chat.findIndex((m) => m.id === chatLastRead.id) : -1
+    if (idx >= 0) return chat.slice(idx + 1).filter(fromOthers).length
+    // 읽은 메시지가 삭제됐거나 기록이 없으면 시각으로 비교
+    return chat.filter((m) => m.at > chatLastRead.at && fromOthers(m)).length
+  }, [chat, chatLastRead, username])
+
+  // 채팅창이 열려 있는 동안 들어온 메시지는 바로 읽음 처리
+  useEffect(() => {
+    if (!showChat || chat.length === 0) return
+    const last = chat[chat.length - 1]
+    if (last.id === chatLastRead.id) return
+    const next = { id: last.id, at: Math.max(chatLastRead.at, ...chat.map((m) => m.at)) }
+    setChatLastRead(next)
+    try {
+      localStorage.setItem(chatReadKey, JSON.stringify(next))
+    } catch {
+      // 저장 공간이 없어도 화면 표시는 계속 동작
+    }
+  }, [showChat, chat, chatLastRead, chatReadKey])
 
   // 드래그 중인 노드 위에 겹친 "드롭 대상" 노드 id (초록 하이라이트용)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
@@ -315,7 +406,20 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     username,
   ])
 
-  const { screenToFlowPosition, getNodes } = useReactFlow()
+  const { screenToFlowPosition, getNodes, setCenter } = useReactFlow()
+
+  // 변경 기록에서 항목을 누르면 그 노드가 화면 가운데 오도록 이동
+  const existingNodeIds = useMemo(() => new Set(nodes.map((n) => n.id)), [nodes])
+  const focusNode = useCallback(
+    (id: string) => {
+      const n = nodes.find((x) => x.id === id)
+      if (!n) return
+      const w = n.measured?.width ?? 200
+      const h = n.measured?.height ?? 80
+      setCenter(n.position.x + w / 2, n.position.y + h / 2, { zoom: 1.2, duration: 400 })
+    },
+    [nodes, setCenter],
+  )
   // 내보내기 진행 중 표시
   const [exporting, setExporting] = useState(false)
 
@@ -343,27 +447,66 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     return map
   }, [nodes])
 
-  // 드래그 하이라이트 + 생성 순번(seq)을 data 에 주입한 노드 배열
+  // --- 담당자 필터 (내 화면에만 적용) ---
+  // '' = 전체, MINE = 내 작업, UNASSIGNED = 담당자 미지정, 그 외 = 해당 담당자 이름
+  const [assigneeFilter, setAssigneeFilter] = useState('')
+  const assigneeOptions = useMemo(() => {
+    const names = new Set<string>()
+    for (const n of nodes) {
+      if (isWbsData(n.data)) for (const a of splitAssignees(n.data.assignee)) names.add(a)
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b, 'ko'))
+  }, [nodes])
+
+  // 필터에 맞는 노드 id 집합 (필터가 꺼져 있으면 null). WBS 작업만 대상이고 아이디어·메모는 흐리게 처리된다.
+  const filterMatchIds = useMemo(() => {
+    if (!assigneeFilter) return null
+    const me = [user.name, username].map((s) => s.trim().toLowerCase())
+    const ids = new Set<string>()
+    for (const n of nodes) {
+      if (!isWbsData(n.data)) continue
+      const people = splitAssignees(n.data.assignee).map((s) => s.toLowerCase())
+      const ok =
+        assigneeFilter === FILTER_MINE
+          ? people.some((p) => me.includes(p))
+          : assigneeFilter === FILTER_UNASSIGNED
+            ? people.length === 0
+            : people.includes(assigneeFilter.toLowerCase())
+      if (ok) ids.add(n.id)
+    }
+    return ids
+  }, [assigneeFilter, nodes, user.name, username])
+
+  // 드래그 하이라이트 + 생성 순번(seq) + 필터 흐림을 적용한 노드 배열
   const displayNodes = useMemo(
     () =>
       nodes.map((n) => {
-        const withSeq = { ...n, data: { ...n.data, seq: seqById[n.id] } }
-        return n.id === dropTargetId
-          ? { ...withSeq, className: `${n.className ?? ''} drop-target`.trim() }
-          : withSeq
+        const classes = [n.className ?? '']
+        if (n.id === dropTargetId) classes.push('drop-target')
+        if (filterMatchIds && !filterMatchIds.has(n.id)) classes.push('filtered-out')
+        const className = classes.join(' ').trim()
+        return {
+          ...n,
+          data: { ...n.data, seq: seqById[n.id] },
+          ...(className ? { className } : {}),
+        }
       }),
-    [nodes, dropTargetId, seqById],
+    [nodes, dropTargetId, seqById, filterMatchIds],
   )
 
   // 내 설정(색상/굵기)을 모든 연결선에 적용 + 화살표 표시 (내 화면에만 반영)
+  // 필터 중에는 양 끝이 모두 걸린 연결선만 진하게 보인다.
   const displayEdges = useMemo<Edge[]>(
     () =>
       edges.map((e) => ({
         ...e,
         style: { ...e.style, stroke: edgeStyle.color, strokeWidth: edgeStyle.width },
         markerEnd: { type: MarkerType.ArrowClosed, color: edgeStyle.color },
+        ...(filterMatchIds && !(filterMatchIds.has(e.source) && filterMatchIds.has(e.target))
+          ? { className: 'filtered-out' }
+          : {}),
       })),
-    [edges, edgeStyle],
+    [edges, edgeStyle, filterMatchIds],
   )
 
 
@@ -600,6 +743,58 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     }
   }, [buildBoardImage, roomName])
 
+  // WBS 작업 목록을 표(CSV)로 저장 — 엑셀/구글 시트에서 바로 열린다. 생성 순번 순서.
+  const handleExportCsv = useCallback(() => {
+    const tasks = nodes
+      .filter((n) => isWbsData(n.data))
+      .map((n) => ({ seq: seqById[n.id] ?? 0, d: n.data as WbsNodeData }))
+      .sort((a, b) => a.seq - b.seq)
+    if (tasks.length === 0) {
+      window.alert('보드에 WBS 작업이 없어요. 작업을 추가한 뒤 저장해 보세요.')
+      return
+    }
+    const header = [
+      '번호',
+      '작업명',
+      '담당자',
+      '상태',
+      '진행률(%)',
+      '시작일',
+      '마감일',
+      '마감 현황',
+      '세부 체크항목(완료/전체)',
+      '세부 체크항목 내용',
+      '첨부 수',
+      '투표 수',
+      '댓글 수',
+    ]
+    const rows = tasks.map(({ seq, d }) => {
+      const checklist = d.checklist ?? []
+      const done = d.status === 'done'
+      return [
+        seq,
+        d.label,
+        d.assignee,
+        WBS_STATUS[d.status]?.label ?? d.status,
+        Math.max(0, Math.min(100, Number(d.progress) || 0)),
+        d.start ?? '',
+        d.due ?? '',
+        d.due ? (done ? '완료' : dueBadge(d.due, false)) : '',
+        checklist.length > 0 ? `${checklist.filter((c) => c.done).length}/${checklist.length}` : '',
+        checklist.map((c) => `${c.done ? '[완료]' : '[ ]'} ${c.text}`).join(' / '),
+        d.attachments?.length ?? 0,
+        d.votes?.length ?? 0,
+        d.comments?.length ?? 0,
+      ]
+    })
+    downloadTextFile(
+      toCsv([header, ...rows]),
+      exportFilename(`${roomName}_WBS`, 'csv'),
+      'text/csv',
+      true,
+    )
+  }, [nodes, seqById, roomName])
+
   // 캘린더에 자동 기록할 WBS 마감 (마감일이 지정된 작업만). 노드에서 바로 파생하므로
   // 마감일 수정/작업 삭제/완료 토글이 캘린더에 즉시 반영된다.
   const wbsDeadlines = useMemo<WbsDeadline[]>(
@@ -619,6 +814,42 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     [nodes],
   )
 
+  // --- 마감 임박 알림 ---
+  // 보드에 들어와 서버 내용을 다 받은 직후 한 번만, 완료되지 않은 작업 중
+  // 마감이 지났거나 오늘/내일인 것을 모아 보여준다.
+  const [deadlineAlert, setDeadlineAlert] = useState<WbsDeadline[] | null>(null)
+  const deadlineCheckedRef = useRef(false)
+  useEffect(() => {
+    if (!synced || deadlineCheckedRef.current) return
+    deadlineCheckedRef.current = true
+    const tomorrow = localIsoDate(1)
+    const urgent = wbsDeadlines
+      .filter((d) => !d.done && d.due <= tomorrow)
+      .sort((a, b) => a.due.localeCompare(b.due))
+    if (urgent.length > 0) setDeadlineAlert(urgent)
+  }, [synced, wbsDeadlines])
+
+  // 간트차트 / CSV 내보내기용 WBS 작업 목록 (생성 순번 포함)
+  const ganttTasks = useMemo<GanttTask[]>(
+    () =>
+      nodes
+        .filter((n) => isWbsData(n.data))
+        .map((n) => {
+          const d = n.data as WbsNodeData
+          return {
+            id: n.id,
+            seq: seqById[n.id],
+            label: d.label,
+            assignee: d.assignee ?? '',
+            status: d.status,
+            progress: d.progress,
+            start: d.start || undefined,
+            due: d.due || undefined,
+          }
+        }),
+    [nodes, seqById],
+  )
+
   // 대시보드 집계용 WBS 작업 데이터 목록
   const wbsTasks = useMemo(
     () => nodes.filter((n) => isWbsData(n.data)).map((n) => n.data as WbsNodeData),
@@ -636,6 +867,26 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       <div className="toolbar">
         <strong className="room-title">{roomName}</strong>
         <span className={connected ? 'dot online' : 'dot offline'} />
+        <span className="tool-group undo-group">
+          <button
+            type="button"
+            onClick={undo}
+            disabled={!canUndo}
+            title="실행 취소 (Ctrl+Z)"
+            aria-label="실행 취소"
+          >
+            ↶
+          </button>
+          <button
+            type="button"
+            onClick={redo}
+            disabled={!canRedo}
+            title="다시 실행 (Ctrl+Shift+Z 또는 Ctrl+Y)"
+            aria-label="다시 실행"
+          >
+            ↷
+          </button>
+        </span>
         <span className="peers">
           접속 {peers.length}
           {peers.map((p, i) => (
@@ -677,17 +928,68 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         <span className="tool-group" data-step="3">
           <span className="tool-step">③ 작업</span>
           <button onClick={handleAddWbs}>+ WBS 작업</button>
+          <label className={assigneeFilter ? 'assignee-filter active' : 'assignee-filter'}>
+            <span aria-hidden="true">👤</span>
+            <span className="sr-only">담당자별로 보기</span>
+            <select
+              value={assigneeFilter}
+              onChange={(e) => setAssigneeFilter(e.target.value)}
+              title="담당자별로 걸러 보기 (내 화면에만 적용)"
+            >
+              <option value="">전체 보기</option>
+              <option value={FILTER_MINE}>내 작업만</option>
+              <option value={FILTER_UNASSIGNED}>담당자 미지정</option>
+              {assigneeOptions.length > 0 && (
+                <optgroup label="담당자">
+                  {assigneeOptions.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </label>
+          {filterMatchIds && (
+            <span className="filter-status">
+              {filterMatchIds.size}개 작업
+              <button
+                type="button"
+                className="filter-clear"
+                onClick={() => setAssigneeFilter('')}
+                aria-label="담당자 필터 해제"
+              >
+                ✕
+              </button>
+            </span>
+          )}
         </span>
 
         {/* 더보기 — 부가 기능 */}
         <span className="tool-group more-group">
-          <button className="ghost-toggle" onClick={() => setShowMore((v) => !v)}>
+          <button
+            className="ghost-toggle"
+            onClick={() => {
+              // 펼칠 때 내 역할을 다시 확인 (팀장을 위임받았으면 삭제 버튼이 보이도록)
+              if (!showMore) setRoleCheckTick((t) => t + 1)
+              setShowMore((v) => !v)
+            }}
+          >
             {showMore ? '더보기 ▴' : '더보기 ▾'}
           </button>
           {showMore && (
             <span className="more-items">
               <button onClick={() => setShowDashboard(true)} title="팀원별 현황 / 전체 진행률">
                 📊 대시보드
+              </button>
+              <button onClick={() => setShowGantt(true)} title="WBS 작업을 시작일~마감일 막대로 보기">
+                📈 간트차트
+              </button>
+              <button
+                onClick={() => setShowHistory((v) => !v)}
+                title="누가 무엇을 바꿨는지 + 팀원별 기여도"
+              >
+                🕘 변경 기록
               </button>
               <button
                 onClick={() => setShowCalendar((v) => !v)}
@@ -736,6 +1038,15 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
                     >
                       📄 PDF로 저장
                     </button>
+                    <button
+                      onClick={() => {
+                        setShowShare(false)
+                        handleExportCsv()
+                      }}
+                      title="WBS 작업 목록을 엑셀에서 열 수 있는 표(CSV)로 저장"
+                    >
+                      📋 WBS 표(엑셀 CSV)로 저장
+                    </button>
                   </span>
                 )}
               </span>
@@ -777,7 +1088,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           'chat-fab',
           showChat ? 'active' : '',
           // 우측 사이드 패널(채팅/캘린더/대시보드/투표/댓글)이 열려 있으면 가리지 않게 왼쪽으로 비켜남
-          showChat || showCalendar || showDashboard || showPoll || commentNodeId
+          showChat || showCalendar || showDashboard || showPoll || showHistory || commentNodeId
             ? 'shifted'
             : '',
         ]
@@ -785,8 +1096,16 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           .join(' ')}
         onClick={() => setShowChat((v) => !v)}
         title="방에 들어온 참여자들끼리 실시간 채팅"
+        aria-label={
+          unreadChatCount > 0 && !showChat ? `채팅, 안 읽은 메시지 ${unreadChatCount}개` : '채팅'
+        }
       >
-        💬 채팅{chat.length > 0 ? ` ${chat.length}` : ''}
+        💬 채팅
+        {unreadChatCount > 0 && !showChat && (
+          <span className="chat-unread-badge" aria-hidden="true">
+            {unreadChatCount > 99 ? '99+' : unreadChatCount}
+          </span>
+        )}
       </button>
 
       <input
@@ -864,7 +1183,56 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         </div>
       )}
 
-      {showMembers && <MembersPanel slug={room} onClose={() => setShowMembers(false)} />}
+      {showMembers && (
+        <MembersPanel
+          slug={room}
+          onClose={() => setShowMembers(false)}
+          onRoleChanged={(role) => setIsOwner(role === 'owner')}
+          onLeft={() => {
+            leavingByMeRef.current = true
+            onLeave()
+          }}
+        />
+      )}
+
+      {showHistory && (
+        <HistoryPanel
+          entries={activity}
+          existingNodeIds={existingNodeIds}
+          onFocusNode={focusNode}
+          onOpenCalendar={() => {
+            setShowHistory(false)
+            setShowCalendar(true)
+          }}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
+
+      {showGantt && (
+        <GanttPanel
+          tasks={ganttTasks}
+          onOpenTask={(id) => {
+            setShowGantt(false)
+            setEditingWbsId(id)
+          }}
+          onClose={() => setShowGantt(false)}
+        />
+      )}
+
+      {deadlineAlert && (
+        <DeadlineAlert
+          items={deadlineAlert}
+          onOpenTask={(id) => {
+            setDeadlineAlert(null)
+            setEditingWbsId(id)
+          }}
+          onOpenCalendar={() => {
+            setDeadlineAlert(null)
+            setShowCalendar(true)
+          }}
+          onClose={() => setDeadlineAlert(null)}
+        />
+      )}
 
       {showDeleteBoard && isOwner && (
         <DeleteBoardModal
@@ -918,9 +1286,10 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           events={calendar}
           deadlines={wbsDeadlines}
           onToggleDeadline={(nodeId) => toggleWbsDone(nodeId)}
-          onAdd={(date, text) => addCalendarEvent(date, text, username)}
+          memberNames={memberNames}
+          onAdd={(date, text, extra) => addCalendarEvent(date, text, username, extra)}
           onToggle={(id) => toggleCalendarEvent(id)}
-          onEdit={(id, text) => editCalendarEvent(id, text)}
+          onEdit={(id, patch) => editCalendarEvent(id, patch)}
           onDelete={(id) => deleteCalendarEvent(id)}
           onClose={() => setShowCalendar(false)}
         />

@@ -2,6 +2,7 @@ import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import type { Edge, Node } from '@xyflow/react'
 import { getToken } from '../api/client'
+import type { ActivityEntry } from './activity'
 
 /**
  * Yjs 기반 실시간 협업 레이어.
@@ -75,6 +76,8 @@ export interface WbsNodeData {
   status: WbsStatus
   /** 진행률 0~100 */
   progress: number
+  /** 시작일 (YYYY-MM-DD 문자열, 없으면 빈 문자열) — 간트차트 기간 막대에 사용 */
+  start?: string
   /** 마감일 (YYYY-MM-DD 문자열, 없으면 빈 문자열) */
   due?: string
   /** 세부 체크항목(서브태스크) 목록 */
@@ -187,6 +190,10 @@ export interface CalendarEvent {
   date: string
   /** 일정 내용 */
   text: string
+  /** 시각 (HH:MM, 선택). 없으면 하루 종일 일정 */
+  time?: string
+  /** 담당자 (선택, 자유 입력) */
+  assignee?: string
   /** 완료 체크 여부 */
   done: boolean
   /** 만든 사람 username */
@@ -229,6 +236,8 @@ export interface CollabHandle {
   chat: Y.Array<ChatMessage>
   /** 방 공유 캘린더 일정들 (키 = event id) */
   calendar: Y.Map<CalendarEvent>
+  /** 변경 기록 (누가 무엇을 바꿨는지, 오래된 것부터) */
+  activity: Y.Array<ActivityEntry>
   /** 방 공유 설정 (키 'edgeStyle' 등) */
   meta: Y.Map<unknown>
   /** 현재 접속한 사용자 정보(커서/이름 공유용) */
@@ -253,6 +262,7 @@ export function connectRoom(roomName: string, user: { name: string; color: strin
   const poll = doc.getMap<Poll>('poll')
   const chat = doc.getArray<ChatMessage>('chat')
   const calendar = doc.getMap<CalendarEvent>('calendar')
+  const activity = doc.getArray<ActivityEntry>('activity')
   const meta = doc.getMap<unknown>('meta')
 
   provider.awareness.setLocalStateField('user', user)
@@ -265,6 +275,7 @@ export function connectRoom(roomName: string, user: { name: string; color: strin
     poll,
     chat,
     calendar,
+    activity,
     meta,
     awareness: provider.awareness,
     destroy: () => {

@@ -192,6 +192,13 @@ export const api = {
   removeMember: (slug: string, userId: number) =>
     request<{ members: Member[] }>('DELETE', `/rooms/${slug}/members/${userId}`),
   deleteRoom: (slug: string) => request<{ ok: true }>('DELETE', `/rooms/${slug}`),
+  /** 팀장 위임 (팀장만). 성공하면 나는 참여자가 된다. */
+  transferOwner: (slug: string, userId: number) =>
+    request<{ ok: true; role: 'member'; members: Member[] }>('POST', `/rooms/${slug}/transfer`, {
+      userId,
+    }),
+  /** 보드에서 나가기 (참여자만) */
+  leaveRoom: (slug: string) => request<{ ok: true }>('POST', `/rooms/${slug}/leave`),
 
   // 초대 수락/거절
   listInvites: () => request<{ invites: Invite[] }>('GET', '/rooms/invites/list'),

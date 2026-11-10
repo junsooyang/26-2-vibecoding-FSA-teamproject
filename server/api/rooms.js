@@ -185,6 +185,52 @@ router.delete('/:slug/members/:userId', loadRoomMembership, (req, res) => {
   return res.json({ members: listMembers.all(req.room.id) })
 })
 
+// 팀장 위임 (owner 만) — 참여자(member) 중 한 명을 새 팀장으로, 나는 참여자가 된다.
+router.post('/:slug/transfer', loadRoomMembership, (req, res) => {
+  if (req.membership.role !== 'owner') {
+    return res.status(403).json({ error: '팀장(owner)만 위임할 수 있습니다.' })
+  }
+  const targetId = Number(req.body?.userId)
+  if (!Number.isInteger(targetId) || targetId === req.user.id) {
+    return res.status(400).json({ error: '팀장을 맡길 팀원을 선택하세요.' })
+  }
+  const target = findMember.get(req.room.id, targetId)
+  if (!target || target.role !== 'member') {
+    return res
+      .status(400)
+      .json({ error: '초대를 수락한 참여자에게만 팀장을 맡길 수 있습니다.' })
+  }
+  const now = Date.now()
+  // 세 변경이 함께 성공하거나 함께 실패하도록 하나의 트랜잭션으로 처리
+  db.exec('BEGIN')
+  try {
+    updateMemberRole.run('owner', target.joined_at, req.room.id, targetId)
+    updateMemberRole.run('member', req.membership.joined_at ?? now, req.room.id, req.user.id)
+    db.prepare('UPDATE rooms SET owner_id = ? WHERE id = ?').run(targetId, req.room.id)
+    db.exec('COMMIT')
+  } catch (err) {
+    db.exec('ROLLBACK')
+    throw err
+  }
+  return res.json({ ok: true, role: 'member', members: listMembers.all(req.room.id) })
+})
+
+// 보드에서 나가기 (참여자 본인). 팀장은 먼저 위임하거나 보드를 삭제해야 한다.
+router.post('/:slug/leave', loadRoomMembership, (req, res) => {
+  if (req.membership.role === 'owner') {
+    return res
+      .status(400)
+      .json({ error: '팀장은 나갈 수 없어요. 먼저 다른 팀원에게 팀장을 맡기거나 보드를 삭제하세요.' })
+  }
+  deleteMember.run(req.room.id, req.user.id)
+  // 나간 사람의 개인 공간(이 보드용 개인 노트/파일)도 함께 정리
+  db.prepare('DELETE FROM personal_spaces WHERE user_id = ? AND room_slug = ?').run(
+    req.user.id,
+    req.room.slug,
+  )
+  return res.json({ ok: true })
+})
+
 // 방 삭제 (owner 만). CASCADE 로 멤버도 함께 삭제됨.
 router.delete('/:slug', loadRoomMembership, (req, res) => {
   if (req.membership.role !== 'owner') {

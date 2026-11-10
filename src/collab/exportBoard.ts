@@ -80,3 +80,24 @@ export function savePngAsPdf(pngDataUrl: string, imgW: number, imgH: number, fil
   pdf.addImage(pngDataUrl, 'PNG', x, y, w, h)
   pdf.save(filename)
 }
+
+// ---------------------------------------------------------------------------
+// 텍스트 파일 저장 (CSV 변환 자체는 ./csv.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * 텍스트를 파일로 저장한다.
+ * CSV 는 맨 앞에 UTF-8 BOM 을 붙여야 엑셀(윈도우)에서 한글이 깨지지 않는다.
+ */
+export function downloadTextFile(text: string, filename: string, mime: string, withBom = false) {
+  const blob = new Blob([withBom ? '\uFEFF' : '', text], { type: `${mime};charset=utf-8` })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // 다운로드가 시작된 뒤 정리
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
