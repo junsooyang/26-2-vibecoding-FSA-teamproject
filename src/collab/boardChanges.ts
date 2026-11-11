@@ -71,6 +71,12 @@ export function applyNodeChangesToBoard(
         if (c.setAttributes === true || c.setAttributes === 'height') ui.height = c.dimensions.height
       }
       if (typeof c.resizing === 'boolean') ui.resizing = c.resizing
+      // 크기 조절이 끝나면 내 화면의 임시 크기를 지운다. 이후에는 공유 문서에 저장된 크기(data.w/h)를
+      // 따르므로, 다른 팀원이 나중에 크기를 바꿔도 내 화면에 그대로 반영된다.
+      if (c.resizing === false) {
+        delete ui.width
+        delete ui.height
+      }
       nodeUi.set(c.id, ui)
       uiChanged = true
     } else {
@@ -142,4 +148,27 @@ export function applyEdgeChangesToBoard(
     }
   })
   return { uiChanged, written }
+}
+
+// ---------------------------------------------------------------------------
+// 연결선 스타일 (선마다 따로 저장)
+// ---------------------------------------------------------------------------
+
+export interface LineStyle {
+  color: string
+  width: number
+}
+
+/** 연결선 data 에 저장된 스타일을 읽는다. 없거나 잘못된 값이면 fallback(보드 기본 스타일). */
+export function edgeStyleOf(edge: BoardEdge, fallback: LineStyle): LineStyle {
+  const d = (edge.data ?? {}) as { color?: unknown; width?: unknown }
+  return {
+    color: typeof d.color === 'string' && d.color ? d.color : fallback.color,
+    width: typeof d.width === 'number' && d.width > 0 ? d.width : fallback.width,
+  }
+}
+
+/** 연결선에 스타일을 붙인 새 객체 (다른 data 값은 유지) */
+export function withEdgeStyle(edge: BoardEdge, style: LineStyle): BoardEdge {
+  return { ...edge, data: { ...(edge.data ?? {}), color: style.color, width: style.width } }
 }

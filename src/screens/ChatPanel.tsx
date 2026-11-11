@@ -10,6 +10,8 @@ interface Props {
   currentUsername: string
   /** 현재 접속자 수 */
   peerCount: number
+  /** 메시지마다 아직 안 읽은 멤버 수 (카카오톡처럼 숫자로 표시, 0 이면 숨김) */
+  unreadById?: Record<string, number>
   onSend: (text: string) => void
   onEdit: (id: string, text: string) => void
   onDelete: (id: string) => void
@@ -28,6 +30,7 @@ export default function ChatPanel({
   messages,
   currentUsername,
   peerCount,
+  unreadById = {},
   onSend,
   onEdit,
   onDelete,
@@ -125,7 +128,18 @@ export default function ChatPanel({
                       {m.text}
                       {m.editedAt ? <span className="chat-edited"> (수정됨)</span> : null}
                     </div>
-                    <span className="chat-time">{formatTime(m.at)}</span>
+                    <span className="chat-meta-col">
+                      {(unreadById[m.id] ?? 0) > 0 && (
+                        <span
+                          className="chat-unread-count"
+                          title={`아직 ${unreadById[m.id]}명이 안 읽었어요`}
+                          aria-label={`안 읽은 사람 ${unreadById[m.id]}명`}
+                        >
+                          {unreadById[m.id]}
+                        </span>
+                      )}
+                      <span className="chat-time">{formatTime(m.at)}</span>
+                    </span>
                     {mine && (
                       <span className="chat-msg-actions">
                         <button type="button" className="chat-link" onClick={() => startEdit(m)}>

@@ -2,6 +2,18 @@ import { useMemo, useState } from 'react'
 import type { CalendarEvent } from '../collab/yjs'
 import { dueBadge } from '../collab/wbsUtils'
 
+/** 캘린더에 자동 표시되는 투표 마감 (투표에서 파생 — 별도 저장 없음) */
+export interface PollDeadline {
+  id: string
+  question: string
+  /** 마감 날짜 (로컬 YYYY-MM-DD) */
+  date: string
+  /** 마감 시각 (HH:MM) */
+  time: string
+  /** 종료됐는지 (직접 종료 또는 마감 지남) */
+  closed: boolean
+}
+
 /** 캘린더에 자동 표시되는 WBS 작업 마감 (WBS 노드에서 파생 — 별도 저장 없음) */
 export interface WbsDeadline {
   /** WBS 노드 id */
@@ -25,6 +37,10 @@ interface Props {
   deadlines: WbsDeadline[]
   /** WBS 마감 항목의 체크 → 해당 작업 완료/해제 */
   onToggleDeadline: (nodeId: string) => void
+  /** 마감 시각이 있는 투표들 (투표에서 파생 — 자동 표시) */
+  pollDeadlines?: PollDeadline[]
+  /** 투표 마감 항목을 누르면 투표 창 열기 */
+  onOpenPoll?: () => void
   /** 담당자 입력 자동완성에 쓸 보드 멤버 이름 */
   memberNames?: string[]
   onAdd: (date: string, text: string, extra: { time?: string; assignee?: string }) => void
@@ -56,6 +72,8 @@ export default function CalendarPanel({
   events,
   deadlines,
   onToggleDeadline,
+  pollDeadlines = [],
+  onOpenPoll,
   memberNames = [],
   onAdd,
   onToggle,
@@ -93,6 +111,13 @@ export default function CalendarPanel({
       if (e.done) cur.done += 1
       map[e.date] = cur
     }
+    // 투표 마감도 합산 (종료된 투표는 완료로)
+    for (const p of pollDeadlines) {
+      const cur = map[p.date] ?? { total: 0, done: 0 }
+      cur.total += 1
+      if (p.closed) cur.done += 1
+      map[p.date] = cur
+    }
     // WBS 마감도 같은 날짜 배지에 합산
     for (const d of deadlines) {
       const cur = map[d.due] ?? { total: 0, done: 0 }
@@ -101,7 +126,7 @@ export default function CalendarPanel({
       map[d.due] = cur
     }
     return map
-  }, [events, deadlines])
+  }, [events, deadlines, pollDeadlines])
 
   // 달력 그리드 셀 구성 (앞쪽 빈칸 + 날짜들)
   const cells = useMemo(() => {
@@ -125,6 +150,14 @@ export default function CalendarPanel({
   const dayDeadlines = useMemo(
     () => deadlines.filter((d) => d.due === selected),
     [deadlines, selected],
+  )
+  // 선택한 날짜에 마감되는 투표 (시각 순)
+  const dayPolls = useMemo(
+    () =>
+      pollDeadlines
+        .filter((p) => p.date === selected)
+        .sort((a, b) => a.time.localeCompare(b.time)),
+    [pollDeadlines, selected],
   )
 
   const goPrevMonth = () => setCursor(new Date(year, month - 1, 1))
@@ -248,7 +281,25 @@ export default function CalendarPanel({
           </div>
         ))}
 
-        {dayEvents.length === 0 && dayDeadlines.length === 0 ? (
+        {/* 투표 마감 — 마감 시각을 정한 투표가 자동 표시. 누르면 투표 창이 열림 */}
+        {dayPolls.map((p) => (
+          <button
+            key={`poll-${p.id}`}
+            type="button"
+            className={p.closed ? 'cal-event poll done' : 'cal-event poll'}
+            onClick={onOpenPoll}
+            title="투표 창 열기"
+          >
+            <span className="cal-event-text">
+              <span className="cal-time">{p.time}</span>
+              <span className="cal-poll-tag">투표 마감</span>
+              {p.question}
+            </span>
+            <span className="cal-poll-state">{p.closed ? '종료' : '진행 중'}</span>
+          </button>
+        ))}
+
+        {dayEvents.length === 0 && dayDeadlines.length === 0 && dayPolls.length === 0 ? (
           <p className="tip">이 날짜에 일정이 없어요. 아래에서 추가해보세요.</p>
         ) : (
           dayEvents.map((ev) => {

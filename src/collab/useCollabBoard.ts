@@ -24,10 +24,23 @@ import { UndoManager } from 'yjs'
 import {
   applyEdgeChangesToBoard,
   applyNodeChangesToBoard,
+  edgeStyleOf,
   mergeNodeUi,
   stripUi,
+  withEdgeStyle,
   type NodeUi,
 } from './boardChanges'
+
+/** 새 연결선 기본 스타일 (보드에 설정이 없을 때) */
+export const DEFAULT_LINE_STYLE = { color: '#6366f1', width: 2.5 }
+
+/** 지금 보드의 "새 연결선 기본 스타일" (공유 meta 의 edgeStyle) */
+function currentDefaultEdgeStyle(handle: CollabHandle): EdgeStyle {
+  const es = handle.meta.get('edgeStyle') as Partial<EdgeStyle> | undefined
+  return es && typeof es.color === 'string' && typeof es.width === 'number'
+    ? { color: es.color, width: es.width }
+    : DEFAULT_LINE_STYLE
+}
 import {
   describeCalendar,
   describeEdge,
@@ -40,6 +53,7 @@ import {
   type ActivityEntry,
 } from './activity'
 import type * as Y from 'yjs'
+import { advanceRead, type ChatRead } from './chatReads'
 
 /** 'HH:MM' 형식만 받는다. 형식이 아니면 빈 값 (시간 없는 일정) */
 function normalizeTime(time: string | undefined): string {
@@ -107,6 +121,7 @@ export function useCollabBoard(
   const [cursors, setCursors] = useState<RemoteCursor[]>([])
   const [polls, setPolls] = useState<Poll[]>([])
   const [chat, setChat] = useState<ChatMessage[]>([])
+  const [chatReads, setChatReads] = useState<Record<string, ChatRead>>({})
   const [calendar, setCalendar] = useState<CalendarEvent[]>([])
   const [edgeStyle, setEdgeStyleState] = useState<EdgeStyle>({ color: '#6366f1', width: 2.5 })
   const [connected, setConnected] = useState(false)
@@ -180,6 +195,15 @@ export function useCollabBoard(
     handle.edges.observe(syncEdges)
     handle.poll.observe(syncPoll)
     handle.chat.observe(syncChat)
+    const syncChatReads = () => {
+      const out: Record<string, ChatRead> = {}
+      handle.chatReads.forEach((v, k) => {
+        if (v && typeof v.at === 'number') out[k] = { id: typeof v.id === 'string' ? v.id : null, at: v.at }
+      })
+      setChatReads(out)
+    }
+    handle.chatReads.observe(syncChatReads)
+    syncChatReads()
     handle.calendar.observe(syncCalendar)
     handle.meta.observe(syncMeta)
 
@@ -293,6 +317,7 @@ export function useCollabBoard(
       handle.edges.unobserve(syncEdges)
       handle.poll.unobserve(syncPoll)
       handle.chat.unobserve(syncChat)
+      handle.chatReads.unobserve(syncChatReads)
       handle.calendar.unobserve(syncCalendar)
       handle.activity.unobserve(syncActivity)
       handle.nodes.unobserve(logNodes)
@@ -364,10 +389,11 @@ export function useCollabBoard(
     const prev = Array.from(handle.edges.values())
     const prevIds = new Set(prev.map((e) => e.id))
     const next = addEdge(connection, prev)
+    const style = currentDefaultEdgeStyle(handle)
     handle.doc.transact(() => {
-      // 새로 생긴 연결선만 쓴다
+      // 새로 생긴 연결선만 쓴다 (지금 기본 스타일을 그 선에 저장)
       for (const e of next) {
-        if (!prevIds.has(e.id)) handle.edges.set(e.id, e)
+        if (!prevIds.has(e.id)) handle.edges.set(e.id, withEdgeStyle(e, style))
       }
     })
   }, [])
@@ -546,7 +572,7 @@ export function useCollabBoard(
     }
     const id = `edge-${targetId}-${sourceId}`
     const edge: BoardEdge = { id, source: targetId, target: sourceId }
-    handle.edges.set(id, edge)
+    handle.edges.set(id, withEdgeStyle(edge, currentDefaultEdgeStyle(handle)))
   }, [])
 
   /**
@@ -828,10 +854,22 @@ export function useCollabBoard(
         text: trimmed,
         at: Date.now(),
       }
-      handle.chat.push([message])
+      handle.doc.transact(() => {
+        handle.chat.push([message])
+        // 내가 보낸 메시지는 내가 읽은 것으로 (안 읽음으로 세지 않음)
+        handle.chatReads.set(authorUsername, { id: message.id, at: message.at })
+      })
     },
     [],
   )
+
+  /** 채팅을 이 메시지까지 읽었다고 기록 (앞으로만 이동, 공유 저장 → 다른 팀원의 읽음 숫자에 반영) */
+  const markChatRead = useCallback((username: string, read: ChatRead) => {
+    const handle = handleRef.current
+    if (!handle || !username) return
+    const next = advanceRead(handle.chat.toArray(), handle.chatReads.get(username), read)
+    if (next) handle.chatReads.set(username, next)
+  }, [])
 
   /** 채팅 메시지 수정 (본인 메시지만 — 권한 체크는 호출부에서) */
   const editChatMessage = useCallback((id: string, text: string) => {
@@ -923,11 +961,35 @@ export function useCollabBoard(
     handle.calendar.delete(id)
   }, [])
 
-  /** 공유 연결선 스타일 설정 (모든 참여자에게 반영) */
+  /**
+   * 새 연결선 기본 스타일 설정. 이미 있는 선은 바뀌지 않는다.
+   * (스타일이 저장되지 않은 예전 선은 기본값을 따라 그려지므로, 바꾸기 전에 지금 모습을 각 선에 고정해 둔다)
+   */
   const setEdgeStyle = useCallback((style: EdgeStyle) => {
     const handle = handleRef.current
     if (!handle) return
-    handle.meta.set('edgeStyle', style)
+    const prevDefault = currentDefaultEdgeStyle(handle)
+    handle.doc.transact(() => {
+      for (const e of handle.edges.values()) {
+        const d = (e.data ?? {}) as { color?: unknown }
+        if (typeof d.color !== 'string') handle.edges.set(e.id, withEdgeStyle(e, prevDefault))
+      }
+      handle.meta.set('edgeStyle', style)
+    })
+  }, [])
+
+  /** 고른 연결선들만 스타일 변경 (patch 에 없는 값은 각 선의 기존 값 유지) */
+  const setEdgesStyle = useCallback((ids: string[], patch: Partial<EdgeStyle>) => {
+    const handle = handleRef.current
+    if (!handle || ids.length === 0) return
+    const fallback = currentDefaultEdgeStyle(handle)
+    handle.doc.transact(() => {
+      for (const id of ids) {
+        const e = handle.edges.get(id)
+        if (!e) continue
+        handle.edges.set(id, withEdgeStyle(e, { ...edgeStyleOf(e, fallback), ...patch }))
+      }
+    })
   }, [])
 
   /** 노드 크기(너비/높이) 저장 — 공유 */
@@ -999,6 +1061,8 @@ export function useCollabBoard(
       closePoll,
       clearPoll,
       chat,
+      chatReads,
+      markChatRead,
       sendChatMessage,
       editChatMessage,
       deleteChatMessage,
@@ -1010,6 +1074,7 @@ export function useCollabBoard(
       deleteCalendarEvent,
       edgeStyle,
       setEdgeStyle,
+      setEdgesStyle,
       resizeNode,
       toggleCollapse,
     }),
@@ -1056,6 +1121,8 @@ export function useCollabBoard(
       closePoll,
       clearPoll,
       chat,
+      chatReads,
+      markChatRead,
       sendChatMessage,
       editChatMessage,
       deleteChatMessage,
@@ -1067,6 +1134,7 @@ export function useCollabBoard(
       deleteCalendarEvent,
       edgeStyle,
       setEdgeStyle,
+      setEdgesStyle,
       resizeNode,
       toggleCollapse,
     ],

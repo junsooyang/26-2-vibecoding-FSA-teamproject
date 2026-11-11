@@ -3,6 +3,7 @@ import { WebsocketProvider } from 'y-websocket'
 import type { Edge, Node } from '@xyflow/react'
 import { getToken } from '../api/client'
 import type { ActivityEntry } from './activity'
+import type { ChatRead } from './chatReads'
 
 /**
  * Yjs 기반 실시간 협업 레이어.
@@ -234,6 +235,8 @@ export interface CollabHandle {
   poll: Y.Map<Poll>
   /** 방 채팅 메시지 목록 (시간순 추가) */
   chat: Y.Array<ChatMessage>
+  /** 채팅 읽은 위치 (키 = username, 값 = 마지막으로 읽은 메시지) — 카카오톡식 읽음 숫자용 */
+  chatReads: Y.Map<ChatRead>
   /** 방 공유 캘린더 일정들 (키 = event id) */
   calendar: Y.Map<CalendarEvent>
   /** 변경 기록 (누가 무엇을 바꿨는지, 오래된 것부터) */
@@ -261,6 +264,7 @@ export function connectRoom(roomName: string, user: { name: string; color: strin
   const edges = doc.getMap<BoardEdge>('edges')
   const poll = doc.getMap<Poll>('poll')
   const chat = doc.getArray<ChatMessage>('chat')
+  const chatReads = doc.getMap<ChatRead>('chatReads')
   const calendar = doc.getMap<CalendarEvent>('calendar')
   const activity = doc.getArray<ActivityEntry>('activity')
   const meta = doc.getMap<unknown>('meta')
@@ -274,6 +278,7 @@ export function connectRoom(roomName: string, user: { name: string; color: strin
     edges,
     poll,
     chat,
+    chatReads,
     calendar,
     activity,
     meta,

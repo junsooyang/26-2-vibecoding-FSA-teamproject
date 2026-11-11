@@ -89,7 +89,8 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 10;
+  /* 툴바에서 아래로 펼쳐지는 목록(접속자·공유 등)이 개인 공간 탭(40)보다 위에, 오른쪽 패널(50)보다는 아래에 */
+  z-index: 45;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -113,6 +114,82 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* 접속자 접기/펼치기 버튼 */
+.toolbar button.peers-toggle {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.toolbar .peers.open button.peers-toggle {
+  border-color: #a5b4fc;
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+/* 접속자 목록: 버튼 바로 아래로 펼쳐지는 드롭다운 */
+.toolbar .peers {
+  position: relative;
+}
+
+.toolbar .peer-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 160px;
+  max-width: 260px;
+  max-height: 50vh;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+}
+
+.toolbar .peer-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #111827;
+  white-space: nowrap;
+}
+
+.toolbar .peer-item:hover {
+  background: #f3f4f6;
+}
+
+.toolbar .peer-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.toolbar .peer-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toolbar .peer-me {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: #4338ca;
 }
 
 .toolbar .peer-chip {
@@ -664,6 +741,12 @@ button.danger:hover {
   height: auto;
   border-radius: 6px;
   user-select: none;
+  pointer-events: none; /* 사진 위를 끌어도 브라우저 기본 이미지 끌기 대신 노드가 움직이도록 */
+}
+
+/* 크기 조절 손잡이가 사진 테두리 밖에서도 보이게 (기본은 overflow: hidden) */
+.image-node.selected {
+  overflow: visible;
 }
 
 .image-node-empty {
@@ -1004,6 +1087,27 @@ button.danger:hover {
   border-top-right-radius: 4px;
 }
 
+/* 말풍선 옆: 안 읽은 사람 수(위) + 시각(아래), 카카오톡처럼 */
+.chat-meta-col {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.chat-row.mine .chat-meta-col {
+  align-items: flex-end;
+}
+
+.chat-unread-count {
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  color: #b45309; /* 카카오톡 느낌의 노란 계열, 밝은 배경에서도 읽히도록 진하게 */
+}
+
 .chat-time {
   font-size: 10px;
   color: #9ca3af;
@@ -1243,6 +1347,48 @@ button.danger:hover {
   font-size: 13px;
   color: #1f2937;
   word-break: break-word;
+}
+
+/* 투표 마감 항목: 누르면 투표 창이 열리는 버튼 */
+button.cal-event.poll {
+  width: 100%;
+  border-left: 4px solid #f59e0b;
+  background: #fffbeb;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+button.cal-event.poll:hover,
+button.cal-event.poll:focus-visible {
+  background: #fef3c7;
+}
+
+.cal-poll-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #b45309;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.cal-poll-state {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #92400e;
+}
+
+.cal-event.poll.done .cal-poll-tag {
+  background: #9ca3af;
+}
+
+.cal-event.poll.done .cal-poll-state {
+  color: #6b7280;
 }
 
 /* WBS 마감 항목: 직접 입력한 일정과 구분되도록 왼쪽 강조선 + 태그 */
@@ -1525,7 +1671,7 @@ button.danger:hover {
 /* ---------- 마감 임박 알림 카드 ---------- */
 .deadline-alert {
   position: fixed;
-  top: 64px;
+  top: calc(var(--toolbar-h, 56px) + 8px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 70;
@@ -1631,6 +1777,10 @@ button.danger:hover {
   max-width: 440px;
 }
 
+.delete-warning p {
+  margin: 0;
+}
+
 .delete-warning {
   margin: 0 0 16px;
   font-size: 14px;
@@ -1715,7 +1865,8 @@ button.danger:hover {
 /* ---------- 상시 노출 채팅 버튼 (오른쪽 상단, 나가기 아래) ---------- */
 .chat-fab {
   position: fixed;
-  top: 84px;
+  /* 툴바 바로 아래 (툴바 높이는 Board 가 --toolbar-h 로 넘겨준다) */
+  top: calc(var(--toolbar-h, 56px) + 12px);
   right: 16px;
   z-index: 60;
   padding: 9px 16px;
@@ -2571,7 +2722,7 @@ button.danger:hover {
 /* ---------- 왼쪽 접이식 개인 공간 도크 ---------- */
 .left-dock {
   position: fixed;
-  top: 56px; /* 툴바 아래 */
+  top: var(--toolbar-h, 56px); /* 툴바 아래 */
   left: 0;
   bottom: 0;
   z-index: 40;
@@ -2773,7 +2924,7 @@ button.danger:hover {
 /* ---------- 연결선 스타일 설정 팝오버 ---------- */
 .edge-style-pop {
   position: fixed;
-  top: 56px;
+  top: calc(var(--toolbar-h, 56px) + 4px);
   right: 16px;
   z-index: 120;
   width: 260px;
@@ -2793,6 +2944,22 @@ button.danger:hover {
 
 .edge-style-head strong {
   font-size: 14px;
+}
+
+/* 선 스타일 창: 지금 바꾸는 대상 안내 (선택한 선 / 새 선 기본값) */
+.edge-style-target {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #f3f4f6;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #374151;
+}
+
+.edge-style-target.selected {
+  background: #fff7ed;
+  color: #9a3412;
 }
 
 .edge-style-note {
@@ -3582,8 +3749,7 @@ button.history-item:focus-visible {
   }
 
   .tool-step,
-  .tool-tip-inline,
-  .toolbar .peer-chip {
+  .tool-tip-inline {
     display: none;
   }
 

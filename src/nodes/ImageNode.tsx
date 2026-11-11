@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
-import { type NodeProps } from '@xyflow/react'
+import { NodeResizer, type NodeProps } from '@xyflow/react'
 import type { ImageNodeData } from '../collab/yjs'
 import { fetchFileBlobUrl, isFileRef } from '../api/client'
+import { NODE_RESIZE_EVENT } from './nodeEvents'
 import NodeHandles from './NodeHandles'
+
+/** 사진 노드 최소 너비(px) */
+const MIN_WIDTH = 80
 
 /**
  * 보드에 저장된 이미지 값을 <img> 에서 쓸 수 있는 주소로 바꾸는 훅.
@@ -45,13 +49,29 @@ function useImageSrc(src: string | undefined) {
  * 업로드한 사진(서버 파일 참조), 예전 방식의 data URL, 외부 이미지 URL 을 캔버스에 표시한다.
  * 상/하/좌/우 핸들로 어느 방향으로든 다른 노드와 연결할 수 있다.
  */
-export default function ImageNode({ data, selected }: NodeProps) {
-  const d = data as ImageNodeData
-  const width = Math.max(80, Number(d.width) || 200)
+export default function ImageNode({ id, data, selected, width: liveWidth }: NodeProps) {
+  const d = data as ImageNodeData & { w?: number }
+  // 모서리를 끌어 조절한 너비(w, 공유 저장) > 처음 넣을 때 너비(width) > 기본 200px
+  const savedWidth = Math.max(MIN_WIDTH, Number(d.w) || Number(d.width) || 200)
+  // 끄는 중에는 React Flow 가 알려 주는 실시간 너비를 따라간다
+  const width = liveWidth && liveWidth > 0 ? liveWidth : savedWidth
   const { resolved, failed, loading } = useImageSrc(d.src)
 
   return (
     <div className={selected ? 'image-node selected' : 'image-node'} style={{ width }}>
+      {/* 사진을 선택하면 모서리 손잡이로 크기 조절 (가로세로 비율 유지) */}
+      <NodeResizer
+        isVisible={selected}
+        minWidth={MIN_WIDTH}
+        keepAspectRatio
+        onResizeEnd={(_e, params) => {
+          window.dispatchEvent(
+            new CustomEvent(NODE_RESIZE_EVENT, {
+              detail: { id, w: Math.round(params.width), h: Math.round(params.height) },
+            }),
+          )
+        }}
+      />
       <NodeHandles />
 
       {resolved ? (

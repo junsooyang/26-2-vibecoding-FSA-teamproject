@@ -16,6 +16,9 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useCollabBoard, type AwarenessUser } from './collab/useCollabBoard'
+import { edgeStyleOf } from './collab/boardChanges'
+import { DEFAULT_NODE_SIZE, NEW_NODE_SIZE, findFreePosition } from './collab/placement'
+import { myUnreadCount, unreadCountsByMessage, type ChatMember } from './collab/chatReads'
 import {
   isImageData,
   isStickyData,
@@ -35,7 +38,7 @@ import DeadlineAlert from './screens/DeadlineAlert'
 import GanttPanel, { type GanttTask } from './screens/GanttPanel'
 import HistoryPanel from './screens/HistoryPanel'
 import { dueBadge, localIsoDate, splitAssignees } from './collab/wbsUtils'
-import CalendarPanel, { type WbsDeadline } from './screens/CalendarPanel'
+import CalendarPanel, { type PollDeadline, type WbsDeadline } from './screens/CalendarPanel'
 import PersonalSpacePanel from './screens/PersonalSpacePanel'
 import DashboardPanel from './screens/DashboardPanel'
 import TextInputModal from './screens/TextInputModal'
@@ -122,6 +125,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [isOwner, setIsOwner] = useState(false)
   // 보드 멤버 이름 목록 (캘린더 담당자 자동완성 등에 사용)
   const [memberNames, setMemberNames] = useState<string[]>([])
+  // 채팅 읽음 숫자를 셀 멤버 (아이디 + 들어온 시각)
+  const [chatMembers, setChatMembers] = useState<ChatMember[]>([])
   // 역할/멤버 다시 불러오기: 입장 시 + 더보기를 열 때 (다른 팀원이 나에게 팀장을 맡겼을 수 있음)
   const [roleCheckTick, setRoleCheckTick] = useState(0)
   useEffect(() => {
@@ -131,7 +136,9 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       .then((res) => {
         if (!alive) return
         setIsOwner(res.role === 'owner')
-        setMemberNames(res.members.filter((m) => m.role !== 'invited').map((m) => m.name))
+        const joined = res.members.filter((m) => m.role !== 'invited')
+        setMemberNames(joined.map((m) => m.name))
+        setChatMembers(joined.map((m) => ({ username: m.username, joinedAt: m.joined_at })))
       })
       .catch(() => {
         if (alive) setIsOwner(false)
@@ -188,6 +195,26 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [personalCollapsed, setPersonalCollapsed] = useState(true)
   // 시작 안내 카드를 사용자가 닫았는지
   const [guideDismissed, setGuideDismissed] = useState(false)
+  // 툴바의 접속자 목록(아래로 펼쳐지는 드롭다운) 열림 여부
+  const [peersOpen, setPeersOpen] = useState(false)
+  const togglePeers = useCallback(() => setPeersOpen((v) => !v), [])
+  // 목록 바깥을 누르거나 Esc 를 누르면 닫는다
+  const peersRef = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (!peersOpen) return
+    const onDown = (e: PointerEvent) => {
+      if (peersRef.current && !peersRef.current.contains(e.target as Node)) setPeersOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPeersOpen(false)
+    }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [peersOpen])
   // 연결선 스타일 설정 팝오버 열림 여부 (값은 공유 edgeStyle 사용)
   const [showEdgeStyle, setShowEdgeStyle] = useState(false)
   // 대시보드 패널 열림 여부
@@ -229,7 +256,6 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     onNodesChange,
     onEdgesChange,
     onConnect,
-    addNode,
     renameNode,
     addWbsNode,
     updateWbsNode,
@@ -257,6 +283,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     closePoll,
     clearPoll,
     chat,
+    chatReads,
+    markChatRead,
     sendChatMessage,
     editChatMessage,
     deleteChatMessage,
@@ -267,6 +295,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     deleteCalendarEvent,
     edgeStyle,
     setEdgeStyle,
+    setEdgesStyle,
     resizeNode,
     toggleCollapse,
     activity,
@@ -297,43 +326,48 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [undo, redo])
 
-  // --- 채팅 안 읽은 메시지 ---
-  // 마지막으로 읽은 메시지(id + 시각)를 사용자·보드별로 이 브라우저에 저장한다.
-  const chatReadKey = `chat-read:${username}:${room}`
-  const [chatLastRead, setChatLastRead] = useState<{ id: string | null; at: number }>(() => {
+  // --- 채팅 읽음 ---
+  // 누가 어디까지 읽었는지는 보드 공유 문서(chatReads)에 저장된다 → 기기가 달라도 같고,
+  // 다른 팀원의 "안 읽은 사람 수" 표시에도 쓰인다.
+  // 예전 버전은 이 브라우저(localStorage)에만 저장했으므로, 공유 기록이 없으면 그 값을 처음 한 번 옮긴다.
+  const legacyReadKey = `chat-read:${username}:${room}`
+  useEffect(() => {
+    if (!synced || chatReads[username]) return
     try {
-      const saved = JSON.parse(localStorage.getItem(chatReadKey) ?? 'null')
+      const saved = JSON.parse(localStorage.getItem(legacyReadKey) ?? 'null')
       if (saved && typeof saved.at === 'number') {
-        return { id: typeof saved.id === 'string' ? saved.id : null, at: saved.at }
+        markChatRead(username, { id: typeof saved.id === 'string' ? saved.id : null, at: saved.at })
       }
     } catch {
-      // 저장값이 깨졌으면 처음부터
+      // 저장값이 깨졌으면 무시
     }
-    return { id: null, at: 0 }
-  })
+  }, [synced, chatReads, username, legacyReadKey, markChatRead])
 
-  const unreadChatCount = useMemo(() => {
-    const fromOthers = (m: { authorUsername: string }) => m.authorUsername !== username
-    // 마지막으로 읽은 메시지가 남아 있으면 그 뒤의 메시지만 센다 (기기 간 시계 차이에 영향받지 않음)
-    const idx = chatLastRead.id ? chat.findIndex((m) => m.id === chatLastRead.id) : -1
-    if (idx >= 0) return chat.slice(idx + 1).filter(fromOthers).length
-    // 읽은 메시지가 삭제됐거나 기록이 없으면 시각으로 비교
-    return chat.filter((m) => m.at > chatLastRead.at && fromOthers(m)).length
-  }, [chat, chatLastRead, username])
+  // 내 안 읽은 메시지 수 (내가 보낸 메시지는 세지 않음)
+  const unreadChatCount = useMemo(
+    () => myUnreadCount(chat, chatReads[username], username),
+    [chat, chatReads, username],
+  )
+
+  // 메시지마다 아직 안 읽은 멤버 수 (카카오톡 숫자)
+  const chatUnreadById = useMemo(
+    () => unreadCountsByMessage(chat, chatReads, chatMembers),
+    [chat, chatReads, chatMembers],
+  )
 
   // 채팅창이 열려 있는 동안 들어온 메시지는 바로 읽음 처리
+  // (다른 탭으로 가 있으면 읽지 않은 것으로 둔다)
+  const [pageVisible, setPageVisible] = useState(() => document.visibilityState === 'visible')
   useEffect(() => {
-    if (!showChat || chat.length === 0) return
+    const onVis = () => setPageVisible(document.visibilityState === 'visible')
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+  useEffect(() => {
+    if (!showChat || !pageVisible || chat.length === 0) return
     const last = chat[chat.length - 1]
-    if (last.id === chatLastRead.id) return
-    const next = { id: last.id, at: Math.max(chatLastRead.at, ...chat.map((m) => m.at)) }
-    setChatLastRead(next)
-    try {
-      localStorage.setItem(chatReadKey, JSON.stringify(next))
-    } catch {
-      // 저장 공간이 없어도 화면 표시는 계속 동작
-    }
-  }, [showChat, chat, chatLastRead, chatReadKey])
+    markChatRead(username, { id: last.id, at: last.at })
+  }, [showChat, pageVisible, chat, username, markChatRead])
 
   // 드래그 중인 노드 위에 겹친 "드롭 대상" 노드 id (초록 하이라이트용)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
@@ -423,6 +457,19 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   // 내보내기 진행 중 표시
   const [exporting, setExporting] = useState(false)
 
+  // 툴바 높이 추적 (더보기를 펼치거나 화면이 좁으면 툴바가 여러 줄이 된다)
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  const [toolbarH, setToolbarH] = useState(44)
+  useEffect(() => {
+    const el = toolbarRef.current
+    if (!el) return
+    const update = () => setToolbarH(Math.ceil(el.getBoundingClientRect().height))
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   // 커스텀 노드 타입 등록
   const nodeTypes = useMemo<NodeTypes>(
     () => ({ wbs: WbsNode, image: ImageNode, sticky: StickyNode }),
@@ -494,19 +541,41 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     [nodes, dropTargetId, seqById, filterMatchIds],
   )
 
-  // 내 설정(색상/굵기)을 모든 연결선에 적용 + 화살표 표시 (내 화면에만 반영)
+  // 선마다 저장된 색상/굵기를 적용 + 화살표 표시 (저장값이 없는 예전 선은 보드 기본 스타일)
   // 필터 중에는 양 끝이 모두 걸린 연결선만 진하게 보인다.
   const displayEdges = useMemo<Edge[]>(
     () =>
-      edges.map((e) => ({
-        ...e,
-        style: { ...e.style, stroke: edgeStyle.color, strokeWidth: edgeStyle.width },
-        markerEnd: { type: MarkerType.ArrowClosed, color: edgeStyle.color },
-        ...(filterMatchIds && !(filterMatchIds.has(e.source) && filterMatchIds.has(e.target))
-          ? { className: 'filtered-out' }
-          : {}),
-      })),
+      edges.map((e) => {
+        const st = edgeStyleOf(e, edgeStyle)
+        return {
+          ...e,
+          style: { ...e.style, stroke: st.color, strokeWidth: st.width },
+          markerEnd: { type: MarkerType.ArrowClosed, color: st.color },
+          ...(filterMatchIds && !(filterMatchIds.has(e.source) && filterMatchIds.has(e.target))
+            ? { className: 'filtered-out' }
+            : {}),
+        }
+      }),
     [edges, edgeStyle, filterMatchIds],
+  )
+
+  // 선 스타일 창: 선택한 연결선이 있으면 그 선들만, 없으면 "새 연결선 기본 스타일"을 바꾼다
+  const selectedEdges = useMemo(() => edges.filter((e) => e.selected), [edges])
+  const styleTarget = selectedEdges.length > 0 ? 'selected' : 'default'
+  const shownEdgeStyle =
+    selectedEdges.length > 0 ? edgeStyleOf(selectedEdges[0], edgeStyle) : edgeStyle
+  const applyLineStyle = useCallback(
+    (patch: Partial<typeof edgeStyle>) => {
+      if (selectedEdges.length > 0) {
+        setEdgesStyle(
+          selectedEdges.map((e) => e.id),
+          patch,
+        )
+      } else {
+        setEdgeStyle({ ...edgeStyle, ...patch })
+      }
+    },
+    [selectedEdges, setEdgesStyle, setEdgeStyle, edgeStyle],
   )
 
 
@@ -523,30 +592,29 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     if (commentNodeId && !commentNode) setCommentNodeId(null)
   }, [commentNodeId, commentNode])
 
-  // 빈 캔버스 더블클릭 -> 새 아이디어 노드 추가 (여러 줄 입력 모달)
-  const handlePaneDoubleClick = useCallback(
-    (event: React.MouseEvent) => {
-      const target = event.target as HTMLElement
-      // 노드/핸들/UI 요소 위 더블클릭은 무시하고, 그 외 빈 캔버스에서만 동작.
-      if (
-        target.closest(
-          '.react-flow__node, .react-flow__handle, .react-flow__controls, .react-flow__minimap, .react-flow__edge, button, input, textarea, a, .side-panel, .left-dock, .panel, .empty-card',
-        )
-      ) {
-        return
-      }
-      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-      setTextModal({
-        heading: '새 아이디어',
-        initial: '',
-        confirmLabel: '추가',
-        onSubmit: (text) => {
-          const t = text.trim()
-          if (t) addNode(t, position)
-        },
+  /**
+   * 새 노드를 놓을 자리: 화면 가운데를 기준으로, 다른 노드와 겹치지 않는 가장 가까운 빈자리.
+   * (빈 곳 더블클릭으로 노드를 만드는 기능은 없앴다 — 메모·작업·사진은 툴바 버튼으로만 추가)
+   */
+  const placeNewNode = useCallback(
+    (size: { width: number; height: number }) => {
+      const center = screenToFlowPosition({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
       })
+      const existing = getNodes().map((n) => ({
+        x: n.position.x,
+        y: n.position.y,
+        width: n.measured?.width ?? n.width ?? DEFAULT_NODE_SIZE.width,
+        height: n.measured?.height ?? n.height ?? DEFAULT_NODE_SIZE.height,
+      }))
+      return findFreePosition(
+        { x: center.x - size.width / 2, y: center.y - size.height / 2 },
+        size,
+        existing,
+      )
     },
-    [addNode, screenToFlowPosition],
+    [getNodes, screenToFlowPosition],
   )
 
   // 노드 더블클릭 -> WBS 는 편집 패널, 그 외는 여러 줄 입력 모달
@@ -579,13 +647,9 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
 
   // 화면 중앙 근처에 WBS 노드 추가
   const handleAddWbs = useCallback(() => {
-    const position = screenToFlowPosition({
-      x: window.innerWidth / 2,
-      y: window.innerHeight / 2,
-    })
-    const id = addWbsNode(position)
+    const id = addWbsNode(placeNewNode(NEW_NODE_SIZE.wbs))
     if (id) setEditingWbsId(id)
-  }, [addWbsNode, screenToFlowPosition])
+  }, [addWbsNode, placeNewNode])
 
   // 화면 중앙 근처에 스티커 메모 추가 (여러 줄 입력 모달)
   const handleAddSticky = useCallback(() => {
@@ -598,15 +662,12 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         const t = text.trim()
         const ti = title?.trim() ?? ''
         if (!t && !ti) return
-        const position = screenToFlowPosition({
-          x: window.innerWidth / 2,
-          y: window.innerHeight / 2,
-        })
-        const id = addStickyNode(position)
+        // 입력을 마친 시점에 자리를 찾는다 (모달이 열린 사이 팀원이 노드를 놓았을 수 있음)
+        const id = addStickyNode(placeNewNode(NEW_NODE_SIZE.sticky))
         if (id) updateStickyNode(id, { text: t, title: ti })
       },
     })
-  }, [addStickyNode, updateStickyNode, screenToFlowPosition])
+  }, [addStickyNode, updateStickyNode, placeNewNode])
 
   // 마우스 이동 -> 내 커서(flow 좌표) 브로드캐스트
   const handleMouseMove = useCallback(
@@ -653,19 +714,25 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         return
       }
       // 사진은 서버에 올리고, 보드 문서에는 짧은 참조 문자열만 저장한다.
-      uploadFile(room, file, 'image')
-        .then((uploaded) => {
-          const position = screenToFlowPosition({
-            x: window.innerWidth / 2,
-            y: window.innerHeight / 2,
-          })
-          addImageNode(uploaded.ref, position, file.name)
+      // 겹치지 않게 놓으려면 사진 높이를 알아야 해서, 파일에서 가로세로 비율을 먼저 읽는다
+      const sizePromise = createImageBitmap(file)
+        .then((bmp) => {
+          const w = NEW_NODE_SIZE.image.width
+          // 사진 노드 = 사진 + 캡션(약 28px) + 여백
+          const size = { width: w, height: Math.round((w * bmp.height) / bmp.width) + 40 }
+          bmp.close()
+          return size
+        })
+        .catch(() => ({ ...NEW_NODE_SIZE.image }))
+      Promise.all([uploadFile(room, file, 'image'), sizePromise])
+        .then(([uploaded, size]) => {
+          addImageNode(uploaded.ref, placeNewNode(size), file.name)
         })
         .catch((err) => {
           window.alert(err instanceof Error ? err.message : '사진을 올리지 못했어요.')
         })
     },
-    [room, addImageNode, screenToFlowPosition],
+    [room, addImageNode, placeNewNode],
   )
 
   // --- 격자(행렬) 정렬 ---
@@ -814,6 +881,26 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     [nodes],
   )
 
+  // 캘린더에 자동 표시할 투표 마감 (마감 시각을 정한 투표만). 투표에서 바로 파생하므로
+  // 투표를 지우거나 종료하면 캘린더에도 즉시 반영된다.
+  const pollDeadlines = useMemo<PollDeadline[]>(
+    () =>
+      polls
+        .filter((p) => p && p.deadline > 0)
+        .map((p) => {
+          const d = new Date(p.deadline)
+          const pad = (n: number) => String(n).padStart(2, '0')
+          return {
+            id: p.id,
+            question: p.question,
+            date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+            time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+            closed: p.closed || Date.now() >= p.deadline,
+          }
+        }),
+    [polls],
+  )
+
   // --- 마감 임박 알림 ---
   // 보드에 들어와 서버 내용을 다 받은 직후 한 번만, 완료되지 않은 작업 중
   // 마감이 지났거나 오늘/내일인 것을 모아 보여준다.
@@ -859,12 +946,14 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   return (
     <CurrentUserContext.Provider value={username}>
     <div
-      style={{ width: '100vw', height: '100vh' }}
+      /* 툴바 실제 높이를 CSS 변수로 넘겨, 툴바가 여러 줄로 늘어나도 채팅 버튼·팝오버가 겹치지 않게 한다 */
+      style={
+        { width: '100vw', height: '100vh', '--toolbar-h': `${toolbarH}px` } as React.CSSProperties
+      }
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      onDoubleClick={handlePaneDoubleClick}
     >
-      <div className="toolbar">
+      <div className="toolbar" ref={toolbarRef}>
         <strong className="room-title">{roomName}</strong>
         <span className={connected ? 'dot online' : 'dot offline'} />
         <span className="tool-group undo-group">
@@ -887,13 +976,29 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
             ↷
           </button>
         </span>
-        <span className="peers">
-          접속 {peers.length}
-          {peers.map((p, i) => (
-            <span key={i} className="peer-chip" style={{ background: p.color }}>
-              {p.name}
-            </span>
-          ))}
+        {/* 접속자: "접속 N" 을 눌러 이름표를 접었다 펼친다 */}
+        <span ref={peersRef} className={peersOpen ? 'peers open' : 'peers'}>
+          <button
+            type="button"
+            className="peers-toggle"
+            onClick={togglePeers}
+            aria-expanded={peersOpen}
+            aria-controls="peer-list"
+            title={peersOpen ? '접속자 이름 접기' : '접속자 이름 펼치기'}
+          >
+            👥 접속 {peers.length} {peersOpen ? '▴' : '▾'}
+          </button>
+          {peersOpen && (
+            <ul id="peer-list" className="peer-list" aria-label="지금 접속한 팀원">
+              {peers.map((p, i) => (
+                <li key={i} className="peer-item">
+                  <span className="peer-dot" style={{ background: p.color }} aria-hidden="true" />
+                  <span className="peer-name">{p.name}</span>
+                  {p.name === user.name && <span className="peer-me">나</span>}
+                </li>
+              ))}
+            </ul>
+          )}
         </span>
 
         {/* ① 아이디어 — 브레인스토밍 */}
@@ -902,7 +1007,6 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           <button onClick={handleAddSticky} title="브레인스토밍용 메모(포스트잇) 추가">
             + 메모
           </button>
-          <span className="tool-tip-inline">빈 곳 더블클릭으로도 추가</span>
         </span>
 
         {/* ② 정리 — 마인드맵 */}
@@ -996,8 +1100,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
                 title="팀 일정 캘린더 (날짜별 일정 추가/체크)"
               >
                 🗓️ 캘린더
-                {calendar.length + wbsDeadlines.length > 0
-                  ? ` (${calendar.length + wbsDeadlines.length})`
+                {calendar.length + wbsDeadlines.length + pollDeadlines.length > 0
+                  ? ` (${calendar.length + wbsDeadlines.length + pollDeadlines.length})`
                   : ''}
               </button>
               <button onClick={() => setShowPoll(true)} title="질문/선택지로 팀 투표 진행">
@@ -1077,9 +1181,12 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           )}
         </span>
 
-        <button className="leave-btn" onClick={onLeave}>
-          나가기
-        </button>
+        {/* 더보기를 펼친 동안에는 나가기 버튼을 숨겨 메뉴와 헷갈리지 않게 */}
+        {!showMore && (
+          <button className="leave-btn" onClick={onLeave}>
+            나가기
+          </button>
+        )}
       </div>
 
       {/* 오른쪽 상단(나가기 아래) 상시 노출 채팅 버튼 */}
@@ -1094,7 +1201,11 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         ]
           .filter(Boolean)
           .join(' ')}
-        onClick={() => setShowChat((v) => !v)}
+        onClick={() => {
+          // 열 때 멤버 목록을 새로 받아 읽음 숫자를 정확히 (그사이 새 팀원이 들어왔을 수 있음)
+          if (!showChat) setRoleCheckTick((t) => t + 1)
+          setShowChat((v) => !v)
+        }}
         title="방에 들어온 참여자들끼리 실시간 채팅"
         aria-label={
           unreadChatCount > 0 && !showChat ? `채팅, 안 읽은 메시지 ${unreadChatCount}개` : '채팅'
@@ -1136,6 +1247,17 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
               닫기
             </button>
           </div>
+          {styleTarget === 'selected' ? (
+            <p className="edge-style-target selected">
+              선택한 연결선 <b>{selectedEdges.length}개</b>만 바뀌어요
+            </p>
+          ) : (
+            <p className="edge-style-target">
+              <b>새로 만들 연결선</b>의 기본 스타일이에요. 이미 있는 선은 그대로예요.
+              <br />
+              특정 선만 바꾸려면 그 선을 클릭하세요. (여러 개는 Ctrl/⌘ + 클릭)
+            </p>
+          )}
           <p className="edge-style-note">모든 참여자에게 공유돼요</p>
 
           <div className="field-label">색상</div>
@@ -1144,17 +1266,18 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
               <button
                 key={c}
                 type="button"
-                className={edgeStyle.color === c ? 'edge-color active' : 'edge-color'}
+                className={shownEdgeStyle.color === c ? 'edge-color active' : 'edge-color'}
                 style={{ background: c }}
-                onClick={() => setEdgeStyle({ ...edgeStyle, color: c })}
+                onClick={() => applyLineStyle({ color: c })}
                 title={c}
+                aria-label={`색상 ${c}`}
               />
             ))}
             <input
               type="color"
               className="edge-color-custom"
-              value={edgeStyle.color}
-              onChange={(e) => setEdgeStyle({ ...edgeStyle, color: e.target.value })}
+              value={shownEdgeStyle.color}
+              onChange={(e) => applyLineStyle({ color: e.target.value })}
               title="직접 선택"
             />
           </div>
@@ -1165,8 +1288,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
               <button
                 key={w.value}
                 type="button"
-                className={edgeStyle.width === w.value ? 'edge-width active' : 'edge-width'}
-                onClick={() => setEdgeStyle({ ...edgeStyle, width: w.value })}
+                className={shownEdgeStyle.width === w.value ? 'edge-width active' : 'edge-width'}
+                onClick={() => applyLineStyle({ width: w.value })}
               >
                 {w.label}
               </button>
@@ -1176,7 +1299,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           <button
             type="button"
             className="ghost edge-reset"
-            onClick={() => setEdgeStyle(DEFAULT_EDGE_STYLE)}
+            onClick={() => applyLineStyle(DEFAULT_EDGE_STYLE)}
           >
             기본값으로
           </button>
@@ -1271,6 +1394,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         <ChatPanel
           roomName={roomName}
           messages={chat}
+          unreadById={chatUnreadById}
           currentUsername={username}
           peerCount={peers.length}
           onSend={(text) => sendChatMessage(text, user.name, username, user.color)}
@@ -1286,6 +1410,11 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           events={calendar}
           deadlines={wbsDeadlines}
           onToggleDeadline={(nodeId) => toggleWbsDone(nodeId)}
+          pollDeadlines={pollDeadlines}
+          onOpenPoll={() => {
+            setShowCalendar(false)
+            setShowPoll(true)
+          }}
           memberNames={memberNames}
           onAdd={(date, text, extra) => addCalendarEvent(date, text, username, extra)}
           onToggle={(id) => toggleCalendarEvent(id)}
@@ -1366,7 +1495,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
                 <span className="flow-badge">①</span>
                 <div>
                   <strong>아이디어 모으기</strong>
-                  <p>빈 곳을 더블클릭하거나 <b>+ 메모</b>로 떠오르는 생각을 자유롭게 적어요.</p>
+                  <p>툴바의 <b>+ 메모</b>로 떠오르는 생각을 자유롭게 적어요.</p>
                 </div>
               </li>
               <li>
