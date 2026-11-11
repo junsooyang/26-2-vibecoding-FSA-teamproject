@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NodeResizer, type NodeProps } from '@xyflow/react'
 import type { ImageNodeData } from '../collab/yjs'
 import { fetchFileBlobUrl, isFileRef } from '../api/client'
+import { safeImageSrc } from '../collab/safeUrl'
 import { NODE_RESIZE_EVENT } from './nodeEvents'
 import NodeHandles from './NodeHandles'
 
@@ -11,7 +12,7 @@ const MIN_WIDTH = 80
 /**
  * 보드에 저장된 이미지 값을 <img> 에서 쓸 수 있는 주소로 바꾸는 훅.
  *  - 서버 파일 참조(fsafile:...) : 인증 헤더로 가져와 blob URL 로 변환 (로딩/실패 상태 제공)
- *  - 예전 data URL / 외부 URL    : 그대로 사용
+ *  - 예전 data URL(래스터 이미지)  : 그대로 사용 (외부 URL 은 safeImageSrc 에서 걸러짐)
  */
 function useImageSrc(src: string | undefined) {
   const [resolved, setResolved] = useState<string | null>(null)
@@ -46,7 +47,7 @@ function useImageSrc(src: string | undefined) {
 
 /**
  * 이미지(사진) 커스텀 노드.
- * 업로드한 사진(서버 파일 참조), 예전 방식의 data URL, 외부 이미지 URL 을 캔버스에 표시한다.
+ * 업로드한 사진(서버 파일 참조)과 예전 방식의 data URL 을 캔버스에 표시한다.
  * 상/하/좌/우 핸들로 어느 방향으로든 다른 노드와 연결할 수 있다.
  */
 export default function ImageNode({ id, data, selected, width: liveWidth }: NodeProps) {
@@ -55,7 +56,8 @@ export default function ImageNode({ id, data, selected, width: liveWidth }: Node
   const savedWidth = Math.max(MIN_WIDTH, Number(d.w) || Number(d.width) || 200)
   // 끄는 중에는 React Flow 가 알려 주는 실시간 너비를 따라간다
   const width = liveWidth && liveWidth > 0 ? liveWidth : savedWidth
-  const { resolved, failed, loading } = useImageSrc(d.src)
+  // 공유 문서의 값은 누구나 바꿀 수 있으므로, 허용된 형식의 주소만 쓴다 (외부 주소·스크립트 차단)
+  const { resolved, failed, loading } = useImageSrc(safeImageSrc(d.src))
 
   return (
     <div className={selected ? 'image-node selected' : 'image-node'} style={{ width }}>

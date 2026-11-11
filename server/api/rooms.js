@@ -7,6 +7,7 @@
  *
  * 방의 slug 는 실시간 동기화(y-websocket)에서 쓰는 "방 이름"과 동일하다.
  */
+import crypto from 'node:crypto'
 import express from 'express'
 import db from './db.js'
 import { requireAuth } from './auth.js'
@@ -31,6 +32,9 @@ const updateMemberRole = db.prepare(
 )
 const deleteRoom = db.prepare('DELETE FROM rooms WHERE id = ?')
 const findUserByUsername = db.prepare('SELECT id, username, name FROM users WHERE username = ?')
+const deletePersonalSpace = db.prepare(
+  'DELETE FROM personal_spaces WHERE user_id = ? AND room_slug = ?',
+)
 
 // 내가 "참여 중"인 방 목록 (초대 대기 invited 는 제외)
 const listMyRooms = db.prepare(`
@@ -70,18 +74,26 @@ function makeSlug(name) {
       .replace(/[^\p{L}\p{N}]+/gu, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 40) || 'room'
-  return `${base}-${Math.random().toString(36).slice(2, 8)}`
+  // 추측하기 어렵도록 암호학적 난수로 접미사를 만든다 (영문 소문자+숫자 8자)
+  const suffix = crypto.randomBytes(6).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g, '')
+  return `${base}-${(suffix + '00000000').slice(0, 8)}`
 }
+
+const ROOM_NAME_MAX = 50
 
 // 방 생성 (생성자가 owner 가 됨)
 router.post('/', (req, res) => {
   const { name } = req.body ?? {}
-  if (!name || !String(name).trim()) {
+  if (typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: '방 이름을 입력하세요.' })
   }
-  const slug = makeSlug(name)
+  if (name.trim().length > ROOM_NAME_MAX) {
+    return res.status(400).json({ error: `방 이름은 ${ROOM_NAME_MAX}자 이하로 입력하세요.` })
+  }
+  let slug = makeSlug(name)
+  while (findRoomBySlug.get(slug)) slug = makeSlug(name)
   const now = Date.now()
-  const info = insertRoom.run(slug, String(name).trim(), req.user.id, now)
+  const info = insertRoom.run(slug, name.trim(), req.user.id, now)
   const roomId = Number(info.lastInsertRowid)
   insertMember.run(roomId, req.user.id, 'owner', now)
   return res.status(201).json({ room: findRoomById.get(roomId) })
@@ -154,7 +166,9 @@ router.post('/:slug/members', loadRoomMembership, (req, res) => {
     return res.status(403).json({ error: '팀장(owner)만 초대할 수 있습니다.' })
   }
   const { username } = req.body ?? {}
-  if (!username) return res.status(400).json({ error: '초대할 사용자의 아이디를 입력하세요.' })
+  if (typeof username !== 'string' || !username.trim()) {
+    return res.status(400).json({ error: '초대할 사용자의 아이디를 입력하세요.' })
+  }
 
   const invitee = findUserByUsername.get(username)
   if (!invitee) {
@@ -178,10 +192,15 @@ router.delete('/:slug/members/:userId', loadRoomMembership, (req, res) => {
     return res.status(403).json({ error: '팀장(owner)만 멤버를 내보낼 수 있습니다.' })
   }
   const targetId = Number(req.params.userId)
+  if (!Number.isInteger(targetId)) {
+    return res.status(400).json({ error: '내보낼 팀원을 선택하세요.' })
+  }
   if (targetId === req.user.id) {
     return res.status(400).json({ error: '팀장은 자신을 내보낼 수 없습니다.' })
   }
   deleteMember.run(req.room.id, targetId)
+  // 내보낸 사람의 이 보드용 개인 공간도 함께 정리 (나가기와 동일)
+  deletePersonalSpace.run(targetId, req.room.slug)
   return res.json({ members: listMembers.all(req.room.id) })
 })
 
@@ -224,10 +243,7 @@ router.post('/:slug/leave', loadRoomMembership, (req, res) => {
   }
   deleteMember.run(req.room.id, req.user.id)
   // 나간 사람의 개인 공간(이 보드용 개인 노트/파일)도 함께 정리
-  db.prepare('DELETE FROM personal_spaces WHERE user_id = ? AND room_slug = ?').run(
-    req.user.id,
-    req.room.slug,
-  )
+  deletePersonalSpace.run(req.user.id, req.room.slug)
   return res.json({ ok: true })
 })
 

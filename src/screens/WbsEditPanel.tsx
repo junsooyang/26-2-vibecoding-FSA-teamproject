@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import type { Attachment, ChecklistItem, WbsNodeData, WbsStatus } from '../collab/yjs'
 import { WBS_STATUS } from '../nodes/WbsNode'
 import { downloadFileRef, isFileRef, uploadFile } from '../api/client'
+import { safeLinkHref } from '../collab/safeUrl'
 
 interface Props {
   /** 현재 보드 slug (파일을 이 보드에 업로드하기 위해 필요) */
@@ -295,7 +296,8 @@ export default function WbsEditPanel({
               {attachments.map((a) => (
                 <li key={a.id} className="attach-item">
                   <a
-                    href={a.url}
+                    /* 공유 문서의 주소는 조작될 수 있어 http(s)·서버 파일만 연다 (javascript: 등 차단) */
+                    href={safeLinkHref(a.url)}
                     onClick={(e) => openAttachment(e, a)}
                     target="_blank"
                     rel="noopener noreferrer"

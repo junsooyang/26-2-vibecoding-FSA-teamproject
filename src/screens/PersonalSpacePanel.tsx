@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type PersonalFile, type PersonalSpace } from '../api/client'
+import { safeDownloadHref } from '../collab/safeUrl'
 
 interface Props {
   /** 방 slug (방별로 개인 공간 분리) */
@@ -162,7 +163,7 @@ export default function PersonalSpacePanel({ room, username, collapsed, onToggle
               {data.files.map((f) => (
                 <li key={f.id} className="attach-item">
                   <a
-                    href={f.url}
+                    href={safeDownloadHref(f.url)}
                     download={f.name}
                     className="attach-link"
                     title={`${f.name} (${formatSize(f.size)})`}

@@ -22,7 +22,7 @@ import { WebSocketServer } from 'ws'
 import jwt from 'jsonwebtoken'
 import { setupWSConnection, setPersistence } from 'y-websocket/bin/utils'
 import { persistence, closeDb } from './persistence.js'
-import { JWT_SECRET, DB_PATH } from './config.js'
+import { JWT_SECRET, DB_PATH, WS_MAX_PAYLOAD } from './config.js'
 
 /** 닫힘 코드 (4000번대는 애플리케이션 용도로 예약된 영역) */
 export const CLOSE_ROOM_DELETED = 4404
@@ -46,11 +46,13 @@ function rejectUpgrade(socket, status, message) {
 }
 
 /**
- * @param {{ recheckMs?: number }} [options]
+ * @param {{ recheckMs?: number, maxPayload?: number }} [options]
  *   recheckMs: 연결된 사용자의 멤버십을 다시 확인하는 간격 (기본 2000ms)
+ *   maxPayload: 메시지 하나의 최대 바이트 (기본 WS_MAX_PAYLOAD_MB, 16MB)
  */
 export function createRealtimeServer(options = {}) {
   const recheckMs = options.recheckMs ?? 2000
+  const maxPayload = options.maxPayload ?? WS_MAX_PAYLOAD
 
   // Yjs 문서 영속화 핸들러 등록 (방 로드 시 복원 / 변경 시 SQLite 저장)
   setPersistence(persistence)
@@ -87,7 +89,8 @@ export function createRealtimeServer(options = {}) {
     res.end('y-websocket 실시간 협업 서버')
   })
 
-  const wss = new WebSocketServer({ noServer: true })
+  // 메시지 하나의 최대 크기. 넘으면 ws 가 연결을 끊는다(1009). 기본값(100MB)은 메모리 고갈에 취약하다.
+  const wss = new WebSocketServer({ noServer: true, maxPayload })
 
   /** 연결 중인 클라이언트: 주기적 멤버십 재확인용 */
   const sessions = new Map() // ws -> { slug, userId }
@@ -98,7 +101,7 @@ export function createRealtimeServer(options = {}) {
 
     let userId
     try {
-      userId = jwt.verify(token, JWT_SECRET).sub
+      userId = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }).sub
     } catch {
       return rejectUpgrade(socket, 401, 'Unauthorized')
     }
@@ -110,6 +113,12 @@ export function createRealtimeServer(options = {}) {
     wss.handleUpgrade(req, socket, head, (ws) => {
       sessions.set(ws, { slug, userId })
       ws.on('close', () => sessions.delete(ws))
+      // 너무 큰 메시지·깨진 프레임이면 ws 가 'error' 를 낸다. 처리기가 없으면 서버 프로세스가 죽으므로
+      // 그 연결만 끊고 서버는 계속 동작하게 한다. (ws 가 닫힘 코드 1009/1002 등으로 연결을 닫는다)
+      ws.on('error', (err) => {
+        console.warn(`[y-websocket] 연결 오류로 종료 (${slug}):`, err instanceof Error ? err.message : err)
+        sessions.delete(ws)
+      })
       // docName 을 명시해서 URL 파싱 방식에 의존하지 않는다.
       setupWSConnection(ws, req, { docName: slug })
     })

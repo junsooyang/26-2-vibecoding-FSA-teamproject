@@ -11,16 +11,38 @@
  */
 import express from 'express'
 import cors from 'cors'
-import authRouter from './auth.js'
+import authRouter, { requireAuth } from './auth.js'
 import roomsRouter from './rooms.js'
 import personalRouter from './personal.js'
 import filesRouter from './files.js'
 
+/**
+ * CORS 허용 출처. CORS_ORIGIN 에 쉼표로 적으면 그 출처만 허용한다.
+ * 비워 두면 개발 편의를 위해 모든 출처를 허용한다. (인증은 쿠키가 아닌 Bearer 토큰이라 CSRF 위험은 없음)
+ */
+function corsOptions() {
+  const list = (process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return list.length ? { origin: list } : {}
+}
+
 export function createApp() {
   const app = express()
-  app.use(cors())
-  // 개인 공간 파일(data URL)이 커질 수 있으므로 바디 크기 제한을 넉넉히 둔다.
-  app.use(express.json({ limit: '20mb' }))
+  app.disable('x-powered-by')
+  app.use(cors(corsOptions()))
+  // 기본 보안 헤더 (API 응답용)
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('X-Frame-Options', 'DENY')
+    res.setHeader('Referrer-Policy', 'no-referrer')
+    next()
+  })
+  // 개인 공간 파일(data URL)은 커질 수 있어 이 경로만 큰 본문을 허용하고, 로그인한 사용자만 보낼 수 있게 한다.
+  app.use('/api/personal', requireAuth, express.json({ limit: '20mb' }))
+  // 그 밖의 JSON 요청은 작게 제한한다.
+  app.use(express.json({ limit: '1mb' }))
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }))
   app.use('/api/auth', authRouter)
@@ -29,9 +51,14 @@ export function createApp() {
   app.use('/api/files', filesRouter)
 
   // JSON 파싱 오류 등 공통 에러 핸들러
+  // 내부 오류 문구(DB·파서 메시지 등)는 사용자에게 보내지 않는다.
   app.use((err, _req, res, _next) => {
-    console.error('[api] 오류:', err)
-    res.status(err.status || 500).json({ error: err.message || '서버 오류' })
+    const status = Number(err.status || err.statusCode) || 500
+    if (status >= 500) console.error('[api] 오류:', err)
+    let message = '서버 오류가 발생했습니다.'
+    if (status === 413) message = '요청이 너무 큽니다.'
+    else if (status >= 400 && status < 500) message = '잘못된 요청입니다.'
+    if (!res.headersSent) res.status(status).json({ error: message })
   })
 
   return app
