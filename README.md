@@ -294,6 +294,8 @@ npm start            # 포트: PORT 환경변수 (없으면 3001)
 
 배포 로그에 `DB → Postgres (...pooler.supabase.com...)`와 `파일 저장소 → Supabase Storage`가 보이면 연결된 것입니다. DB나 저장소에 연결하지 못하면 서버는 이유를 출력하고 시작하지 않습니다.
 
+> **자동 배포가 안 될 때** : Render는 GitHub 앱이 저장소에 연결되어 있어야 `main`에 올릴 때마다 자동으로 배포합니다. 저장소 주소만 넣어 만든 서비스(공개 저장소)는 Render가 커밋 알림을 받지 못해 **직접 배포해야** 합니다. [github.com/apps/render](https://github.com/apps/render) › Configure에서 이 저장소에 권한을 주면 해결됩니다. 서비스 설정은 대시보드의 서비스 › **Settings › Build & Deploy**에 있습니다(계정 설정 화면이 아님).
+
 ### 3. Vercel
 
 1. 저장소를 가져오면 Vite가 자동 인식됩니다(Build `npm run build`, Output `dist`).
