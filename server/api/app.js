@@ -71,6 +71,19 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }))
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }))
+
+  // 배포 진단용 (DEBUG_IP_ECHO=1 일 때만): 서버가 판단한 "요청한 사람의 IP" 를 그 사람에게 돌려준다.
+  // TRUST_PROXY 값이 맞는지(프록시 IP 가 아니라 실제 사용자 IP 로 보이는지) 확인할 때만 잠깐 켠다.
+  if (process.env.DEBUG_IP_ECHO === '1') {
+    app.get('/api/debug/ip', (req, res) => {
+      const xff = String(req.headers['x-forwarded-for'] || '')
+      res.json({
+        ip: req.ip,
+        trustProxy: app.get('trust proxy'),
+        forwardedHops: xff ? xff.split(',').length : 0,
+      })
+    })
+  }
   app.use('/api/auth', authRouter)
   app.use('/api/rooms', roomsRouter)
   app.use('/api/personal', personalRouter)

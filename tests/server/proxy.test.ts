@@ -65,6 +65,27 @@ describe('TRUST_PROXY 값 해석', () => {
   })
 })
 
+describe('IP 진단 경로 (DEBUG_IP_ECHO)', () => {
+  it('기본으로는 꺼져 있다 (404)', async () => {
+    const base = await appWith('1')
+    expect((await fetch(`${base}/debug/ip`)).status).toBe(404)
+  })
+
+  it('켜면 프록시 1단계 뒤의 실제 IP 를 돌려주고, 앞에 꾸민 값은 무시한다', async () => {
+    process.env.DEBUG_IP_ECHO = '1'
+    try {
+      const base = await appWith('1')
+      // 클라이언트가 꾸민 값(1.1.1.1) 뒤에 프록시가 실제 IP(203.0.113.5)를 붙인 상황
+      const res = await fetch(`${base}/debug/ip`, { headers: { 'X-Forwarded-For': '1.1.1.1, 203.0.113.5' } })
+      const body = (await res.json()) as { ip: string; forwardedHops: number }
+      expect(body.ip).toBe('203.0.113.5')
+      expect(body.forwardedHops).toBe(2)
+    } finally {
+      delete process.env.DEBUG_IP_ECHO
+    }
+  })
+})
+
 describe('프록시 뒤 로그인 실패 제한', () => {
   it('켜면(1): 공격자가 피해자 아이디를 잠가도 피해자 IP 에서는 로그인된다', async () => {
     const base = await appWith('1')
