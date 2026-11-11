@@ -7,8 +7,10 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   applyEdgeChangesToBoard,
   applyNodeChangesToBoard,
+  edgeStyleOf,
   mergeNodeUi,
   stripUi,
+  withEdgeStyle,
   type NodeUi,
 } from '../../src/collab/boardChanges'
 import type { BoardEdge, BoardNode } from '../../src/collab/yjs'
@@ -142,5 +144,51 @@ describe('화면 상태 합치기', () => {
   it('stripUi 는 화면 전용 필드만 뺀다', () => {
     const s = stripUi({ id: 'x', selected: true, measured: {}, resizing: true, position: { x: 1, y: 2 } })
     expect(s).toEqual({ id: 'x', position: { x: 1, y: 2 } })
+  })
+})
+
+describe('크기 조절', () => {
+  it('끄는 동안은 내 화면 임시 크기를 쓰고, 끝나면 지워서 공유 크기를 따른다', () => {
+    applyNodeChangesToBoard(a, an, ui, [
+      {
+        type: 'dimensions',
+        id: 'n1',
+        dimensions: { width: 300, height: 200 },
+        resizing: true,
+        setAttributes: true,
+      },
+    ])
+    expect(ui.get('n1')).toMatchObject({ width: 300, height: 200, resizing: true })
+    applyNodeChangesToBoard(a, an, ui, [
+      { type: 'dimensions', id: 'n1', dimensions: { width: 300, height: 200 }, resizing: false },
+    ])
+    expect(ui.get('n1')?.width).toBeUndefined()
+    expect(ui.get('n1')?.height).toBeUndefined()
+    expect(an.get('n1')!.width).toBeUndefined() // 공유 문서에는 화면 크기가 들어가지 않음
+  })
+})
+
+describe('연결선 스타일 (선마다 따로)', () => {
+  const fallback = { color: '#6366f1', width: 2.5 }
+
+  it('저장된 스타일이 없으면 보드 기본값, 있으면 그 선의 값', () => {
+    const plain: BoardEdge = { id: 'e', source: 'a', target: 'b' }
+    expect(edgeStyleOf(plain, fallback)).toEqual(fallback)
+    const red = withEdgeStyle(plain, { color: '#ef4444', width: 4 })
+    expect(edgeStyleOf(red, fallback)).toEqual({ color: '#ef4444', width: 4 })
+  })
+
+  it('한 선을 바꿔도 다른 선은 그대로', () => {
+    ae.set('e1', withEdgeStyle({ id: 'e1', source: 'n1', target: 'n2' }, fallback))
+    ae.set('e2', withEdgeStyle({ id: 'e2', source: 'n2', target: 'n1' }, fallback))
+    ae.set('e1', withEdgeStyle(ae.get('e1')!, { color: '#22c55e', width: 6 }))
+    expect(edgeStyleOf(ae.get('e1')!, fallback).color).toBe('#22c55e')
+    expect(edgeStyleOf(ae.get('e2')!, fallback)).toEqual(fallback)
+  })
+
+  it('다른 data 값은 유지하고, 잘못된 값은 기본값으로', () => {
+    const e: BoardEdge = { id: 'e', source: 'a', target: 'b', data: { note: 'x', color: '', width: -1 } }
+    expect(edgeStyleOf(e, fallback)).toEqual(fallback)
+    expect(withEdgeStyle(e, fallback).data).toMatchObject({ note: 'x', ...fallback })
   })
 })

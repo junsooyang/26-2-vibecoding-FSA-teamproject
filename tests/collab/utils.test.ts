@@ -3,6 +3,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { csvCell, toCsv } from '../../src/collab/csv'
+import { phraseMatches } from '../../src/screens/ConfirmPhraseModal'
 import { dueBadge, dueState, localIsoDate, splitAssignees } from '../../src/collab/wbsUtils'
 
 describe('CSV', () => {
@@ -69,5 +70,24 @@ describe('마감일', () => {
     expect(dueState('2026-11-07', false)).toBe('soon')
     expect(dueState('2026-11-20', false)).toBe('normal')
     expect(dueState('2026-11-03', true)).toBe('normal')
+  })
+})
+
+describe('확인 문구 입력 (팀장 위임 / 내보내기 / 보드 삭제)', () => {
+  it('정확히 같거나 띄어쓰기·끝 마침표만 다르면 통과', () => {
+    expect(phraseMatches('팀장위임', '팀장위임')).toBe(true)
+    expect(phraseMatches(' 팀장 위임 ', '팀장위임')).toBe(true)
+    expect(phraseMatches('내보내기', '내보내기')).toBe(true)
+    expect(phraseMatches('삭제하겠습니다', '삭제하겠습니다.')).toBe(true)
+    expect(phraseMatches('나가겠습니다.', '나가겠습니다')).toBe(true)
+    expect(phraseMatches('나가', '나가겠습니다')).toBe(false)
+  })
+
+  it('다른 글자나 빈 값은 통과하지 않는다', () => {
+    expect(phraseMatches('', '팀장위임')).toBe(false)
+    expect(phraseMatches('   ', '팀장위임')).toBe(false)
+    expect(phraseMatches('팀장', '팀장위임')).toBe(false)
+    expect(phraseMatches('내보내', '내보내기')).toBe(false)
+    expect(phraseMatches('삭제', '삭제하겠습니다.')).toBe(false)
   })
 })
