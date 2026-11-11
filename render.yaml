@@ -33,6 +33,8 @@ services:
       # Vercel 프론트 주소 (예: https://teamplx-board.vercel.app)
       - key: CORS_ORIGIN
         sync: false
-      # Render 앞단 프록시 1단계 (로그인 실패 제한이 사용자 IP 를 구분하도록)
+      # Render 앞단 프록시 단계 수 (로그인 실패 제한이 사용자 IP 를 구분하도록).
+      # Render 는 Cloudflare + 내부 프록시로 X-Forwarded-For 에 항상 3개를 붙인다 (DEBUG_IP_ECHO 로 실측).
+      # 1·2 로 두면 프록시 IP 가 사용자 IP 로 잡혀 모두가 같은 IP 로 보인다.
       - key: TRUST_PROXY
-        value: "1"
+        value: "3"

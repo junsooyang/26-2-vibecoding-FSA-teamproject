@@ -86,6 +86,32 @@ describe('IP 진단 경로 (DEBUG_IP_ECHO)', () => {
   })
 })
 
+describe('Render 처럼 프록시가 3단계일 때', () => {
+  // 실측: Render 는 X-Forwarded-For 에 [사용자, Cloudflare, Render 내부] 3개를 붙이고, 소켓은 또 다른 내부 주소다.
+  // 여기에 클라이언트가 꾸민 값(1.1.1.1)을 앞에 붙여 보낸 상황
+  const CHAIN = '1.1.1.1, 203.0.113.5, 172.64.0.1, 10.0.0.2'
+
+  async function ipWith(trust: string) {
+    process.env.DEBUG_IP_ECHO = '1'
+    try {
+      const base = await appWith(trust)
+      const res = await fetch(`${base}/debug/ip`, { headers: { 'X-Forwarded-For': CHAIN } })
+      return ((await res.json()) as { ip: string }).ip
+    } finally {
+      delete process.env.DEBUG_IP_ECHO
+    }
+  }
+
+  it('3 이면 실제 사용자 IP 를 고르고 꾸민 값은 무시한다', async () => {
+    expect(await ipWith('3')).toBe('203.0.113.5')
+  })
+
+  it('1·2 이면 프록시 IP 가 잡혀 모든 사용자가 같은 IP 로 보인다 (잘못된 설정)', async () => {
+    expect(await ipWith('1')).toBe('10.0.0.2')
+    expect(await ipWith('2')).toBe('172.64.0.1')
+  })
+})
+
 describe('프록시 뒤 로그인 실패 제한', () => {
   it('켜면(1): 공격자가 피해자 아이디를 잠가도 피해자 IP 에서는 로그인된다', async () => {
     const base = await appWith('1')
