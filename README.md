@@ -137,7 +137,7 @@
 | **초대 대기 (invited)** | 초대받았지만 수락 전. 입장 불가 |
 
 - 로그인 아이디는 영문/숫자/밑줄 3~20자, 이름은 30자 이하, 비밀번호는 6자 이상 72바이트(영문 기준 72자) 이하입니다. 인증은 JWT(HS256 고정), 비밀번호는 bcrypt로 해싱해 저장합니다.
-- 같은 아이디로 로그인을 **10분 안에 10번 틀리면** 그 아이디는 10분 동안 로그인이 막힙니다(같은 IP 기준).
+- 같은 아이디로 로그인을 **10분 안에 10번 틀리면** 그 아이디는 10분 동안 로그인이 막힙니다(같은 IP 기준). 배포 서비스의 프록시 뒤에서는 `TRUST_PROXY=1`을 넣어야 사용자 IP가 구분됩니다. 넣지 않으면 모든 요청이 같은 IP로 보여서, 누구나 남의 아이디를 10번 틀려 잠글 수 있습니다.
 - 권한 검사는 화면이 아니라 **서버**에서 합니다. 참여자가 화면을 조작해도 보드를 삭제할 수 없습니다.
 - **실시간 서버도 접속할 때 검사합니다.** 로그인 토큰과 보드 멤버 여부를 확인해 통과하지 못하면 연결을 거절합니다(토큰 없음·위조 401, 멤버 아님·초대 대기 403, 없는 보드 404). 연결된 뒤에도 2초마다 다시 확인해서, 강퇴되거나 나가거나 보드가 삭제되면 연결이 끊깁니다.
 - 업로드한 사진과 첨부 파일도 해당 보드의 멤버만 올리고 내려받을 수 있습니다.
@@ -184,8 +184,27 @@ npm run dev
 
 브라우저에서 `http://localhost:5173`에 접속해 **회원가입 → 보드 만들기 → 팀원 초대** 순서로 시작합니다. 초대받을 팀원도 미리 회원가입해 두어야 합니다.
 
+### 한 포트로 실행 (`npm start`, 배포용)
+
+배포 서비스는 보통 포트를 하나만 열어 주고, 보드 내용(Yjs 문서)은 서버 메모리에서 함께 관리됩니다. 그래서 배포할 때는 API 서버와 실시간 서버를 한 프로세스·한 포트로 띄웁니다.
+
+```bash
+npm start            # 포트: PORT 환경변수 (없으면 3001)
+```
+
+| 용도 | 주소 |
+|------|------|
+| API | `http(s)://<호스트>/api` → 프론트의 `VITE_API_URL` |
+| 실시간 연결 | `ws(s)://<호스트>/ws` → 프론트의 `VITE_WS_URL` |
+
+- 로컬에서 `npm start`로 띄웠다면 프론트는 `VITE_API_URL=http://localhost:3001/api`, `VITE_WS_URL=ws://localhost:3001/ws`로 실행합니다.
+- `npm start`와 `npm run api`는 둘 다 기본 포트가 3001이라 **동시에 띄우지 마세요.**
+- 실시간 서버는 예전 주소 형식(`/<보드>`)도 그대로 받습니다.
+
 | 명령 | 설명 |
 |------|------|
+| `npm start` | API + 실시간 서버를 한 포트로 실행 (배포용) |
+| `npm run migrate:supabase` | 로컬 `board.db`·`uploads/`의 데이터를 Supabase로 옮기기 ([배포](#배포-vercel--render--supabase) 참고) |
 | `npm run build` | 타입 검사 후 배포용 빌드 (`dist/`) |
 | `npm run lint` | 타입 검사만 |
 | `npm test` | 자동 테스트 |
@@ -196,30 +215,129 @@ npm run dev
 |------|--------|------|
 | `JWT_SECRET` | (개발용 기본값) | JWT 서명 키. **운영에서는 반드시 변경** |
 | `NODE_ENV` | (없음) | `production` 인데 `JWT_SECRET` 이 없으면 서버가 시작되지 않음 |
-| `API_PORT` | `3001` | API 서버 포트 |
-| `PORT` | `1234` | 실시간 서버 포트 |
-| `DB_PATH` | `board.db` | SQLite 파일 경로 (API 서버와 실시간 서버가 **같은 값**을 써야 함) |
-| `UPLOAD_DIR` | `uploads` | 업로드된 사진·첨부 파일 저장 폴더 |
+| `API_PORT` | `3001` | API 서버 포트 (`npm run api`) |
+| `PORT` | `1234` / `3001` | 실시간 서버 포트(`npm run server`, 기본 1234). `npm start`에서는 합친 서버의 포트(기본 3001) |
+| `DATABASE_URL` | (없음 = SQLite) | Postgres 접속 주소. 넣으면 SQLite 대신 Postgres(Supabase)를 씀 |
+| `DATABASE_SSL` | 원격 `no-verify` / localhost `disable` | `verify`(인증서 검증, `DATABASE_CA_CERT` 필요) · `no-verify`(암호화만) · `disable` |
+| `DATABASE_CA_CERT` | (없음) | `verify`일 때 CA 인증서 내용(PEM) 또는 파일 경로 |
+| `DATABASE_POOL_MAX` | `5` | Postgres 연결 수 상한 |
+| `DB_PATH` | `board.db` | SQLite 파일 경로 (`DATABASE_URL`이 없을 때) |
+| `STORAGE_DRIVER` | `disk` | 사진·첨부 파일 저장소. `disk`(서버 폴더) 또는 `supabase`(Supabase Storage 비공개 버킷) |
+| `UPLOAD_DIR` | `uploads` | `disk`일 때 저장 폴더 |
+| `SUPABASE_URL` | (없음) | `supabase`일 때 프로젝트 주소 (`https://<ref>.supabase.co`) |
+| `SUPABASE_SECRET_KEY` | (없음) | `supabase`일 때 Secret key(`sb_secret_...`). **서버 전용** |
+| `SUPABASE_BUCKET` | `board-files` | `supabase`일 때 버킷 이름. 없으면 서버가 비공개로 만듦 |
 | `VITE_API_URL` | `http://localhost:3001/api` | 프론트가 호출할 API 주소 |
 | `VITE_WS_URL` | `ws://localhost:1234` | 프론트가 접속할 실시간 서버 주소 |
+| `CHECK_DEPLOY_ENV` | (없음) | `1`이면 Vercel이 아닌 곳에서도 아래 배포 빌드 검사를 엄격하게 적용 |
 | `CORS_ORIGIN` | (없음 = 모두 허용) | API를 부를 수 있는 프론트 주소. 쉼표로 여러 개. **배포 시 설정 권장** |
+| `TRUST_PROXY` | (없음 = 끔) | 앞단 프록시 단계 수. 배포 서비스 뒤에서는 보통 `1`. **프록시 없이 직접 받을 때는 비워 두세요**(켜면 IP를 꾸밀 수 있음) |
 | `WS_MAX_PAYLOAD_MB` | `16` | 실시간 서버가 받는 메시지 하나의 최대 크기(MB). 넘으면 연결을 끊음 |
 
 `.env.example`을 참고하세요.
 
+### 배포 빌드 검사 (Vercel)
+
+`VITE_API_URL`·`VITE_WS_URL`은 **빌드할 때 코드에 박히는 값**이라, 빠뜨리면 `localhost` 주소로 빌드된 사이트가 배포됩니다. 그래서 Vercel에서 빌드할 때(`VERCEL=1`, Vercel이 자동으로 넣음)는 아래 경우 **빌드를 멈추고** 이유를 알려 줍니다.
+
+- 값이 없거나 비어 있음
+- 주소 형식이 아님
+- `https://`·`wss://`가 아님 (https 사이트에서 `http`·`ws` 연결은 브라우저가 막음)
+- `localhost`·`127.0.0.1` 주소
+
+`VITE_API_URL`이 `/api`로 끝나지 않으면 경고만 합니다. 로컬 `npm run build`는 값이 없어도 멈추지 않고 경고만 출력합니다. Vercel의 Environment Variables에 값을 넣을 때 **Preview 환경에도 체크**해야 미리보기 배포도 통과합니다.
+
+또 `VITE_`로 시작하는 값은 브라우저에 그대로 공개되므로, 여기에 **서버 비밀 값**(Supabase Secret key `sb_secret_...`, 예전 `service_role` 키, `postgres://` 접속 주소, 이름에 `SECRET`·`PASSWORD`·`JWT`가 들어간 변수)이 있으면 로컬 빌드여도 **항상 멈춥니다.**
+
+## 배포 (Vercel + Render + Supabase)
+
+| 역할 | 서비스 | 하는 일 |
+|------|--------|---------|
+| 프론트엔드 | **Vercel** | `npm run build`로 만든 화면(`dist/`) |
+| 백엔드 | **Render** (Web Service) | `npm start` — API + 실시간 서버 한 포트 |
+| DB · 파일 | **Supabase** | Postgres(사용자·보드·보드 내용), Storage(사진·첨부 파일, 비공개 버킷) |
+
+> Render 무료 플랜은 디스크가 재시작·재배포 때마다 지워집니다. 그래서 배포에서는 SQLite·`uploads/` 대신 **반드시 Supabase**에 저장합니다. 화면은 Supabase에 직접 접속하지 않고 모든 요청이 Render 서버를 거치므로, 권한 검사는 지금처럼 서버가 합니다.
+
+### 1. Supabase
+
+1. 새 프로젝트를 만듭니다. 지역은 **Northeast Asia (Seoul)** 를 권장합니다.
+2. **Connect** › **Session pooler**의 주소를 복사해 DB 비밀번호를 채웁니다. 이것이 `DATABASE_URL`입니다.
+   - `postgresql://postgres.<ref>:<비밀번호>@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres`
+   - **Direct connection은 쓰면 안 됩니다.** IPv6 전용인데 Render는 IPv6로 나가지 못합니다(유료 IPv4 애드온이 있으면 가능).
+   - 비밀번호에 `@`·`#`·`/` 같은 문자가 있으면 주소 안에서 `%40`처럼 바꿔 넣어야 합니다.
+3. **Settings › API Keys**에서 **Secret key**(`sb_secret_...`)를 복사합니다. 이것이 `SUPABASE_SECRET_KEY`입니다. 예전 `service_role` 키도 동작하지만 새 키를 권장합니다.
+4. 표와 버킷은 **서버가 처음 시작할 때 자동으로** 만듭니다. 표에는 RLS(행 수준 보안)가 켜지고 정책이 없어서, Supabase의 공개 키로는 데이터를 읽거나 쓸 수 없습니다. 버킷은 비공개(`public: false`)로 만들어집니다.
+
+### 2. Render
+
+저장소의 `render.yaml`로 **New › Blueprint**를 만들면 설정이 채워집니다. 직접 만들 때는 아래처럼 합니다.
+
+| 항목 | 값 |
+|------|-----|
+| Build Command | `npm ci --omit=dev` |
+| Start Command | `npm start` |
+| Health Check Path | `/api/health` |
+| 인스턴스 | **1대** (보드 내용·로그인 실패 기록이 서버 메모리에 있음) |
+
+| 환경변수 | 값 |
+|----------|-----|
+| `NODE_ENV` | `production` |
+| `JWT_SECRET` | 32자 이상 임의 값 (Blueprint는 자동 생성) |
+| `DATABASE_URL` | 위 1-2의 Session pooler 주소 |
+| `STORAGE_DRIVER` | `supabase` |
+| `SUPABASE_URL` | `https://<ref>.supabase.co` |
+| `SUPABASE_SECRET_KEY` | 위 1-3의 Secret key |
+| `CORS_ORIGIN` | Vercel 주소, 예: `https://<프로젝트>.vercel.app` |
+| `TRUST_PROXY` | `1` |
+
+배포 로그에 `DB → Postgres (...pooler.supabase.com...)`와 `파일 저장소 → Supabase Storage`가 보이면 연결된 것입니다. DB나 저장소에 연결하지 못하면 서버는 이유를 출력하고 시작하지 않습니다.
+
+### 3. Vercel
+
+1. 저장소를 가져오면 Vite가 자동 인식됩니다(Build `npm run build`, Output `dist`).
+2. Environment Variables에 **Production과 Preview 모두** 넣습니다.
+   - `VITE_API_URL` = `https://<render 서비스>.onrender.com/api`
+   - `VITE_WS_URL` = `wss://<render 서비스>.onrender.com/ws`
+3. Vercel 주소가 정해지면 Render의 `CORS_ORIGIN`에 넣고 다시 배포합니다.
+
+### 4. 기존 데이터 옮기기 (선택)
+
+로컬 `board.db`와 `uploads/`에 있는 계정·보드·파일을 **비어 있는 Supabase**로 옮깁니다. 내 컴퓨터에서 한 번 실행합니다.
+
+```bash
+# 프로젝트 폴더에 .env.migrate 파일을 만들어 DATABASE_URL, STORAGE_DRIVER=supabase,
+# SUPABASE_URL, SUPABASE_SECRET_KEY 를 적은 뒤
+npm run migrate:supabase                 # 원본: board.db
+npm run migrate:supabase -- other.db     # 다른 SQLite 파일이면 경로를 뒤에
+```
+
+- 대상 DB에 사용자가 이미 있으면 덮어쓰지 않고 멈춥니다. 표 옮기기는 한 번에 처리되어, 중간에 실패하면 대상은 비어 있는 그대로입니다.
+- 원본 `board.db`·`uploads/`는 읽기만 합니다. `.env.*` 파일은 커밋되지 않습니다(`.gitignore`).
+- 옮긴 뒤에도 기존 비밀번호로 로그인되고, 보드 안의 사진 참조(`fsafile:`)도 그대로 동작합니다.
+
+### 배포 전 확인할 점
+
+- **Render 무료 플랜은 15분 동안 요청이 없으면 잠듭니다.** 다음 접속 때 깨어나는 데 수십 초가 걸리고, 그동안 실시간 연결이 다시 시도됩니다. 발표·시연 전에는 미리 한 번 접속해 두세요.
+- 서버 재배포 때는 `SIGTERM`을 받아 열려 있는 보드를 저장한 뒤 끝냅니다. 그래도 저장 직전 1초 안의 변경은 다시 접속한 사람의 화면에서 다시 보내집니다(Yjs).
+- 서울 Supabase와 가장 가까운 Render 지역은 **Singapore**입니다(`render.yaml` 기본값).
+- Supabase 무료 플랜은 일주일간 사용이 없으면 프로젝트가 일시 정지될 수 있습니다. 대시보드에서 다시 켤 수 있습니다.
+
 ## 자동 테스트
 
 ```bash
-npm test             # 전체 테스트 1회 실행 (약 25초)
+npm test             # 전체 테스트 1회 실행 (약 1분)
 npm run test:watch   # 파일을 고칠 때마다 다시 실행
 ```
 
-[Vitest](https://vitest.dev)로 서버와 핵심 로직을 검사합니다(10개 파일). 서버 테스트는 **임시 DB 파일과 빈 포트**로 서버를 따로 띄우기 때문에, 실행 중인 서버나 실제 `board.db`에는 영향을 주지 않습니다.
+[Vitest](https://vitest.dev)로 서버와 핵심 로직을 검사합니다(16개 파일). 서버 테스트는 **임시 DB 파일과 빈 포트**로 서버를 따로 띄우기 때문에, 실행 중인 서버나 실제 `board.db`에는 영향을 주지 않습니다.
+
+서버 테스트는 **두 번** 돕니다(`vitest.workspace.ts`). 한 번은 로컬과 같은 SQLite, 한 번은 메모리 안의 진짜 Postgres([PGlite](https://pglite.dev))입니다. 그래서 배포용 Supabase(Postgres)에서도 같은 쿼리가 맞게 동작하는지 인터넷 연결 없이 확인합니다.
 
 | 파일 | 확인하는 것 |
 |------|-------------|
 | `tests/server/permissions.test.ts` | 로그인 필요, 보드 접근(멤버·외부인·초대 대기), **보드 삭제는 팀장만** + 삭제 시 부속 데이터 정리, 초대·강퇴, 팀장 위임, 나가기, 개인 공간은 본인만 |
-| `tests/server/realtime.test.ts` | 실시간 서버 접속 거절(401/403/404), 강퇴·나가기 시 4403 · 보드 삭제 시 4404로 연결 종료, 삭제된 보드가 다시 저장되지 않음 |
+| `tests/server/realtime.test.ts` | 실시간 서버 접속 거절(401/403/404), 강퇴·나가기 시 4403 · 보드 삭제 시 4404로 연결 종료, 삭제된 보드가 다시 저장되지 않음, 모두 나간 직후 다시 들어와도 마지막 내용 유지 |
 | `tests/server/files.test.ts` | 업로드·다운로드는 멤버만, SVG 차단, 5MB 제한, 파일명 경로 정리, 위험한 형식은 다운로드로만 |
 | `tests/collab/boardChanges.test.ts` | 실행 취소·다시 실행(이동→클릭→되돌리기 포함), 다른 팀원의 변경은 남김, 선택이 공유되지 않음, 크기 조절 후 공유 크기 사용, 연결선 스타일 선마다 따로 |
 | `tests/collab/activity.test.ts` | 변경 설명, 2분 묶기, 최대 500건 보관, 내 변경만 기록, 기여도 요약 |
@@ -227,6 +345,12 @@ npm run test:watch   # 파일을 고칠 때마다 다시 실행
 | `tests/collab/placement.test.ts` | 새 노드 빈자리 찾기(간격 포함, 가장 가까운 자리, 연달아 만들어도 안 겹침) |
 | `tests/collab/utils.test.ts` | CSV 따옴표·수식 주입 방지, 담당자 나누기, 마감일 표시, 확인 문구 비교 |
 | `tests/server/security.test.ts` | 잘못된 형식 입력에도 서버가 죽지 않음, 길이 제한, 로그인 실패 제한(429), 내부 오류 문구 숨김, 다른 알고리즘 토큰 거절, 개인 공간 멤버 전용·위험 주소 제거·강퇴 시 정리, 실시간 메시지 크기 제한 |
+| `tests/server/proxy.test.ts` | `TRUST_PROXY` 값 해석, 켜면 공격자가 잠가도 피해자 IP는 로그인됨, 끄면 `X-Forwarded-For`를 꾸며도 제한을 못 피함 |
+| `tests/server/combined.test.ts` | `npm start` 한 포트 모드: API·실시간이 같은 포트, 접속 검사(401/403/404), 예전 주소 형식, 두 사람 실시간 동기화, 강퇴 시 4403 |
+| `tests/server/supabaseStorage.test.ts` | Supabase Storage 저장소(가짜 저장소 서버로): 비공개 버킷 자동 생성, 한글 보드 업로드·다운로드, 보드 삭제 시 파일 삭제, Secret key는 `apikey` 헤더로만 |
+| `tests/server/migrate.test.ts` | SQLite → Postgres 이전: 모든 표·파일, 번호·한글·바이너리 유지, 이전 뒤 새 번호가 겹치지 않음, 데이터가 있는 DB는 거절, 실패 시 전부 되돌림 |
+| `tests/server/dbConfig.test.ts` | Supabase 접속 주소·SSL 설정, 자리표시자 변환, 로그에 DB 비밀번호 숨김, 한글 보드의 저장 경로 |
+| `tests/build/deployEnv.test.ts` | 배포 빌드 환경변수 검사: 값 없음·https/wss 아님·localhost·잘못된 주소는 막고, 로컬 빌드는 경고만, 서버 비밀 값이 `VITE_`에 있으면 항상 막음 |
 | `tests/collab/safeUrl.test.ts` | 첨부 링크·사진·개인 파일 주소 검사(`javascript:`·외부 추적 이미지·HTML data URL 차단) |
 
 ## 기술 스택
@@ -240,18 +364,19 @@ npm run test:watch   # 파일을 고칠 때마다 다시 실행
 | 실시간 동기화 | [Yjs](https://docs.yjs.dev) (CRDT) + `y-websocket` |
 | 실시간 서버 | Node.js + `ws` + `y-websocket` |
 | 방/권한 API | Node.js + Express + JWT(`jsonwebtoken`) + `bcryptjs` |
-| 저장소 | SQLite (Node.js 내장 `node:sqlite`) + 서버 디스크(업로드 파일) |
+| 저장소 | 로컬: SQLite (Node.js 내장 `node:sqlite`) + 서버 디스크 · 배포: Supabase Postgres(`pg`) + Supabase Storage |
 | 테스트 | Vitest |
 
 > **왜 Yjs(CRDT)인가?** 여러 명이 동시에 같은 노드를 옮기거나 고쳐도 충돌 없이 자동으로 병합됩니다. 노드, 연결선, 투표, 채팅, 캘린더, 변경 기록이 모두 이 공유 문서에 담겨 실시간으로 동기화됩니다. 실행 취소도 Yjs의 `UndoManager`로 "내가 한 변경"만 되돌립니다.
 
 ## 데이터 저장
 
-- **보드 내용**은 서버의 SQLite(`board.db`)에 보드별로 저장됩니다. 변경 후 약 0.8초 뒤 자동 저장되고, 모든 참여자가 나가면 한 번 더 저장됩니다. 서버를 껐다 켜도 복원됩니다.
-- **사진·첨부 파일**은 서버 디스크(`uploads/<보드>/`)에 저장하고, 보드 문서에는 `fsafile:<보드>/<파일id>` 참조만 넣습니다. 그래서 파일 때문에 보드가 무거워지거나 DB가 불어나지 않습니다. 예전 방식으로 문서에 직접 들어간 사진도 그대로 보입니다.
+- **DB**는 로컬에서는 SQLite(`board.db`), 배포에서는 Postgres(Supabase)입니다. `DATABASE_URL`이 있으면 Postgres를 씁니다. 같은 코드가 두 DB에서 똑같이 동작하는지 자동 테스트로 확인합니다.
+- **보드 내용**은 보드별로 `docs` 테이블에 저장됩니다. 변경 후 약 0.8초 뒤 자동 저장되고, 모든 참여자가 나가면 한 번 더 저장됩니다. 서버를 껐다 켜도 복원됩니다. 불러오기가 끝나기 전에는 저장하지 않아서 빈 보드가 기존 내용을 덮어쓰지 않고, 모두 나간 직후 다시 들어와도 마지막 저장이 끝난 뒤에 불러옵니다.
+- **사진·첨부 파일**은 로컬에서는 서버 디스크(`uploads/<보드>/`), 배포에서는 Supabase Storage 비공개 버킷에 저장합니다. 보드 문서에는 `fsafile:<보드>/<파일id>` 참조만 넣습니다. 그래서 파일 때문에 보드가 무거워지거나 DB가 불어나지 않습니다. 예전 방식으로 문서에 직접 들어간 사진도 그대로 보입니다.
 - **개인 공간**은 같은 DB의 `personal_spaces` 테이블에 사용자+보드별로 저장됩니다.
 - **화면 상태**(노드 선택, 담당자 필터)는 공유하지 않고 각자의 브라우저에만 둡니다. 채팅 읽은 위치는 읽음 숫자를 위해 보드에 공유 저장합니다.
-- `board.db`와 `uploads/`는 `.gitignore`로 커밋에서 제외됩니다. 서버를 옮길 때는 **둘을 함께** 옮겨야 합니다.
+- `board.db`와 `uploads/`는 `.gitignore`로 커밋에서 제외됩니다. 로컬 데이터를 Supabase로 옮길 때는 `npm run migrate:supabase`를 씁니다([배포](#4-기존-데이터-옮기기-선택)).
 
 ## 보안 참고
 
@@ -262,8 +387,7 @@ npm run test:watch   # 파일을 고칠 때마다 다시 실행
 - **변경 기록의 신뢰도** : 기록은 각 팀원의 브라우저가 자기 변경을 남기는 방식입니다. 화면을 조작해 만든 기록까지 서버가 막지는 않으므로, 기여도는 평가의 근거가 아니라 참고용으로 써 주세요.
 - **업로드 파일** : 사진은 PNG/JPG/GIF/WEBP만 받고(SVG 차단), 그 밖의 형식은 브라우저에서 실행되지 않도록 항상 다운로드로만 내려줍니다.
 - **채팅 읽음 숫자** : 읽은 위치도 각 팀원의 브라우저가 기록합니다. 변경 기록과 마찬가지로 서버가 보증하는 값은 아닙니다.
-- **의존성 보안 경고 (아직 해결 안 됨)** : `npm audit`이 8건을 보고합니다. 원인과 실제 영향은 다음과 같습니다.
-  - `jspdf`(DOMPurify 포함): 배포되는 화면 코드에 들어갑니다. 문제 기능(HTML 변환, PDF 양식·스크립트 등)은 쓰지 않고 PNG를 넣어 저장만 하지만, **배포 전에 4.2.1 이상으로 올리기를 권합니다.**
+- **의존성 보안 경고** : 배포되는 코드에 들어가는 패키지는 `npm audit --omit=dev` 기준 **0건**입니다. jsPDF는 4.2.1로 올렸습니다. 전체 `npm audit`에 남은 6건은 개발·테스트 도구에만 해당합니다.
   - `vite`·`esbuild`: 개발 서버(`npm run dev`)에만 해당합니다.
   - `vitest`·`tinypool` 등: 테스트 실행에만 해당합니다.
   - 모두 메이저 버전 업그레이드가 필요해 따로 진행할 예정입니다.
@@ -283,14 +407,20 @@ npm run test:watch   # 파일을 고칠 때마다 다시 실행
 ```
 .
 ├── server/
-│   ├── index.js              # 실시간 서버 실행 (포트 1234)
+│   ├── start.js              # npm start: API + 실시간 서버를 한 포트로 실행 (배포용)
+│   ├── combined.js           # API(Express)와 실시간 서버를 한 HTTP 서버로 묶기
+│   ├── index.js              # 실시간 서버만 실행 (포트 1234)
+│   ├── boot.js               # 시작 전 DB 연결·저장소 버킷 확인
 │   ├── realtime.js           # 실시간 서버 구성 (접속 시 JWT·멤버십 검사, 강퇴·삭제 시 연결 종료)
-│   ├── config.js             # 서버 공용 설정 (JWT_SECRET, DB_PATH)
-│   ├── persistence.js        # 보드(Yjs 문서) SQLite 저장/복원 (삭제된 보드는 저장 안 함)
+│   ├── config.js             # 서버 공용 설정 (JWT_SECRET, DB·SSL, 파일 저장소)
+│   ├── db.js                 # DB 계층: SQLite / Postgres(Supabase) 같은 코드로, 표 만들기(RLS 포함)
+│   ├── storage.js            # 파일 저장소: 서버 디스크 / Supabase Storage
+│   ├── persistence.js        # 보드(Yjs 문서) 저장/복원 (삭제된 보드는 저장 안 함, 덮어쓰기 방지)
+│   ├── tools/
+│   │   └── migrate-to-postgres.js  # 로컬 SQLite·uploads → Supabase 옮기기
 │   └── api/
 │       ├── index.js          # API 서버 실행 (포트 3001)
 │       ├── app.js            # Express 앱 구성 (라우트 연결)
-│       ├── db.js             # users / rooms / room_members / personal_spaces / files
 │       ├── auth.js           # 회원가입·로그인 + JWT 미들웨어
 │       ├── rooms.js          # 보드 생성/목록/초대/강퇴/위임/나가기/삭제
 │       ├── files.js          # 사진·첨부 파일 업로드·다운로드 (멤버 전용)
@@ -314,9 +444,12 @@ npm run test:watch   # 파일을 고칠 때마다 다시 실행
 │   └── screens/              # 로그인, 보드 목록, 멤버 관리, WBS 편집, 캘린더, 간트차트, 채팅,
 │                             # 댓글, 대시보드, 투표, 변경 기록, 마감 알림, 개인 공간,
 │                             # 확인 문구 모달(ConfirmPhraseModal) 등
+├── scripts/
+│   └── deployEnv.ts          # 배포 빌드 환경변수 검사 (vite.config.ts 에서 사용)
 └── tests/
+    ├── build/                # 배포 빌드 검사
     ├── helpers/              # 임시 DB·빈 포트로 서버 띄우기, DB 들여다보기
-    ├── server/               # 권한(API), 실시간 접근 제어, 파일 업로드
+    ├── server/               # 권한(API), 실시간 접근 제어, 파일 업로드, Supabase 저장소·이전 (SQLite·Postgres 둘 다)
     └── collab/               # 실행 취소·선 스타일, 변경 기록, 채팅 읽음, 빈자리 찾기, CSV·날짜 유틸
 ```
 
@@ -334,6 +467,8 @@ npm run test:watch   # 파일을 고칠 때마다 다시 실행
 - [x] 변경 기록·팀원별 기여도, 모바일 화면 대응, 자동 테스트
 - [x] 사진 크기 조절, 연결선 스타일 선마다 따로, 겹치지 않는 노드 배치, 투표 마감 캘린더 연동
 - [x] 카카오톡식 채팅 읽음 숫자, 접속자 목록 드롭다운, 위임·내보내기·나가기 확인 문구
-- [ ] 의존성 보안 업그레이드 (jsPDF 4, Vite 7, Vitest 4)
+- [x] jsPDF 4 업그레이드, API·실시간 서버 한 포트 실행(`npm start`)
+- [ ] 개발 도구 업그레이드 (Vite 7, Vitest 4)
 - [ ] 화면(브라우저) 자동 테스트
-- [ ] 배포 (프론트: Vercel, 실시간·API 서버: Railway/Render/Fly.io)
+- [x] 배포 준비: Supabase Postgres·Storage 지원, Render 설정(`render.yaml`), 데이터 이전 도구
+- [ ] 실제 배포 (Vercel + Render + Supabase)
