@@ -23,7 +23,9 @@ export interface TestServers {
   close: () => Promise<void>
 }
 
-export async function startServers(options: { recheckMs?: number } = {}): Promise<TestServers> {
+export async function startServers(
+  options: { recheckMs?: number; maxPayload?: number } = {},
+): Promise<TestServers> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'collab-board-test-'))
   const dbPath = path.join(dir, 'test.db')
   const uploadDir = path.join(dir, 'uploads')
@@ -39,7 +41,7 @@ export async function startServers(options: { recheckMs?: number } = {}): Promis
     createApp: () => import('express').Express
   }
   const { createRealtimeServer } = nodeRequire('../../server/realtime.js') as {
-    createRealtimeServer: (o?: { recheckMs?: number }) => {
+    createRealtimeServer: (o?: { recheckMs?: number; maxPayload?: number }) => {
       server: Server
       close: () => Promise<void>
     }
@@ -48,7 +50,10 @@ export async function startServers(options: { recheckMs?: number } = {}): Promis
   const apiServer: Server = await new Promise((resolve) => {
     const s = createApp().listen(0, () => resolve(s))
   })
-  const realtime = createRealtimeServer({ recheckMs: options.recheckMs ?? 200 })
+  const realtime = createRealtimeServer({
+    recheckMs: options.recheckMs ?? 200,
+    maxPayload: options.maxPayload,
+  })
   await new Promise<void>((resolve) => realtime.server.listen(0, '127.0.0.1', () => resolve()))
 
   const apiPort = (apiServer.address() as AddressInfo).port
