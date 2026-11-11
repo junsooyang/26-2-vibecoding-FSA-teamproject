@@ -1,9 +1,12 @@
 /**
  * 서버 테스트 공용 도우미.
  *
- * 서버 모듈(server/api/db.js, server/persistence.js 등)은 import 하는 순간 DB_PATH 환경변수로
- * DB 파일을 연다. 그래서 반드시 환경변수를 먼저 정한 뒤 동적 import 해야 한다.
- * 테스트마다 OS 임시 폴더에 새 DB 파일과 업로드 폴더를 만들고, 끝나면 지운다.
+ * 서버 설정(server/config.js)은 import 하는 순간 환경변수를 읽는다.
+ * 그래서 반드시 환경변수를 먼저 정한 뒤 서버 모듈을 불러온다.
+ * 테스트 파일마다 OS 임시 폴더에 새 DB 파일과 업로드 폴더를 만들고, 끝나면 지운다.
+ *
+ * DB 종류: 기본은 SQLite. vitest 의 postgres 프로젝트(vitest.workspace.ts)는 DB_DRIVER=pglite 로
+ * 같은 테스트를 메모리 Postgres 에서 한 번 더 돌린다. (배포용 Supabase 와 같은 SQL 방언 확인)
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -20,11 +23,35 @@ export interface TestServers {
   ws: string
   dbPath: string
   uploadDir: string
+  /** 서버와 같은 DB 로 단일 값 조회 (SQLite·Postgres 모두 동작, 자리표시자는 ?) */
+  scalar: (sql: string, ...params: unknown[]) => Promise<unknown>
+  /** 서버와 같은 DB 로 쓰기 쿼리 실행 */
+  exec: (sql: string, ...params: unknown[]) => Promise<void>
+  /** 지금 테스트가 쓰는 DB 종류 */
+  driver: 'sqlite' | 'pglite'
   close: () => Promise<void>
 }
 
+interface ServerDb {
+  get: (sql: string, params?: unknown[]) => Promise<Record<string, unknown> | undefined>
+  run: (sql: string, params?: unknown[]) => Promise<unknown>
+}
+
+function dbHelpers() {
+  const { db } = nodeRequire('../../server/db.js') as { db: ServerDb }
+  return {
+    scalar: async (sql: string, ...params: unknown[]) => {
+      const row = await db.get(sql, params)
+      return row ? Object.values(row)[0] : undefined
+    },
+    exec: async (sql: string, ...params: unknown[]) => {
+      await db.run(sql, params)
+    },
+  }
+}
+
 export async function startServers(
-  options: { recheckMs?: number; maxPayload?: number } = {},
+  options: { recheckMs?: number; maxPayload?: number; combined?: boolean } = {},
 ): Promise<TestServers> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'collab-board-test-'))
   const dbPath = path.join(dir, 'test.db')
@@ -32,11 +59,52 @@ export async function startServers(
   process.env.DB_PATH = dbPath
   process.env.UPLOAD_DIR = uploadDir
   process.env.JWT_SECRET = 'test-secret'
+  const driver: TestServers['driver'] = process.env.DB_DRIVER === 'pglite' ? 'pglite' : 'sqlite'
 
   // 환경변수를 정한 뒤에 불러와야 임시 DB 를 쓴다.
   // 서버 코드는 Vite 변환을 거치지 않고 Node 가 직접 불러오도록 require 를 쓴다.
   // (Vite 5 는 Node 22 에 생긴 내장 모듈 'node:sqlite' 를 몰라 변환하다 실패한다.
   //  Node 22.12+ 는 ESM 모듈도 require 로 불러올 수 있다.)
+  const helpers = dbHelpers()
+  const { db } = nodeRequire('../../server/db.js') as { db: { ready: () => Promise<void> } }
+  await db.ready() // 스키마를 먼저 만든다
+
+  const removeDir = () => {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true })
+    } catch {
+      // 윈도우에서 DB 파일 잠금이 늦게 풀리면 남을 수 있음 (OS 임시 폴더라 무해)
+    }
+  }
+
+  // npm start 와 같은 "한 포트" 모드: API 와 실시간 서버가 같은 주소를 쓴다.
+  if (options.combined) {
+    const { createCombinedServer } = nodeRequire('../../server/combined.js') as {
+      createCombinedServer: (o?: { recheckMs?: number; maxPayload?: number }) => {
+        server: Server
+        close: () => Promise<void>
+      }
+    }
+    const combined = createCombinedServer({
+      recheckMs: options.recheckMs ?? 200,
+      maxPayload: options.maxPayload,
+    })
+    await new Promise<void>((resolve) => combined.server.listen(0, '127.0.0.1', () => resolve()))
+    const port = (combined.server.address() as AddressInfo).port
+    return {
+      api: `http://127.0.0.1:${port}/api`,
+      ws: `ws://127.0.0.1:${port}/ws`,
+      dbPath,
+      uploadDir,
+      driver,
+      ...helpers,
+      close: async () => {
+        await combined.close()
+        removeDir()
+      },
+    }
+  }
+
   const { createApp } = nodeRequire('../../server/api/app.js') as {
     createApp: () => import('express').Express
   }
@@ -64,14 +132,12 @@ export async function startServers(
     ws: `ws://127.0.0.1:${wsPort}`,
     dbPath,
     uploadDir,
+    driver,
+    ...helpers,
     close: async () => {
       await new Promise<void>((resolve) => apiServer.close(() => resolve()))
       await realtime.close()
-      try {
-        fs.rmSync(dir, { recursive: true, force: true })
-      } catch {
-        // 윈도우에서 DB 파일 잠금이 늦게 풀리면 남을 수 있음 (OS 임시 폴더라 무해)
-      }
+      removeDir()
     },
   }
 }

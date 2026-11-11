@@ -15,7 +15,6 @@ import {
   startServers,
   type TestServers,
 } from '../helpers/server'
-import { openDb, scalar } from '../helpers/sqlite'
 
 let servers: TestServers
 let call: ReturnType<typeof makeApi>
@@ -117,20 +116,46 @@ describe('영속화', () => {
     await new Promise<void>((resolve) => provider.once('sync', () => resolve()))
     doc.getMap('nodes').set('n1', { id: 'n1', position: { x: 0, y: 0 }, data: { label: 'A' } })
 
-    const raw = openDb(servers.dbPath)
-    const docCount = () => scalar(raw, 'SELECT COUNT(*) AS c FROM docs WHERE name = ?', slug)
+    const docCount = () => servers.scalar('SELECT COUNT(*) AS c FROM docs WHERE name = ?', slug)
     // 저장은 약 0.8초 뒤에 일어난다
     await new Promise((r) => setTimeout(r, 1500))
-    expect(docCount()).toBe(1)
+    expect(await docCount()).toBe(1)
 
     await call('DELETE', `/rooms/${slug}`, owner)
     await new Promise((r) => setTimeout(r, 1500))
-    expect(docCount()).toBe(0)
+    expect(await docCount()).toBe(0)
     provider.destroy()
     doc.destroy()
     // 마지막 접속자가 나갈 때 다시 저장되지 않는지
     await new Promise((r) => setTimeout(r, 800))
-    expect(docCount()).toBe(0)
-    raw.close()
+    expect(await docCount()).toBe(0)
+  })
+
+  it('모두 나간 직후 다시 들어와도 마지막 내용이 그대로 보인다', async () => {
+    const connect = async () => {
+      const d = new Y.Doc()
+      const p = new WebsocketProvider(servers.ws, slug, d, {
+        params: { token: owner },
+        WebSocketPolyfill: WebSocket as unknown as typeof globalThis.WebSocket,
+      })
+      await new Promise<void>((resolve) => p.once('sync', () => resolve()))
+      return { d, p }
+    }
+    const first = await connect()
+    first.d.getMap('nodes').set('keep', { id: 'keep', data: { label: '남아야 함' } })
+    // 저장(0.8초 debounce)을 기다리지 않고 곧바로 나갔다가 다시 들어온다
+    await new Promise((r) => setTimeout(r, 100))
+    first.p.destroy()
+    first.d.destroy()
+    await new Promise((r) => setTimeout(r, 50))
+    const second = await connect()
+    // 서버가 저장된 내용을 불러와 보내 줄 때까지 잠깐 기다린다
+    const end = Date.now() + 3000
+    while (!second.d.getMap('nodes').get('keep') && Date.now() < end) {
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    expect((second.d.getMap('nodes').get('keep') as { data: { label: string } })?.data.label).toBe('남아야 함')
+    second.p.destroy()
+    second.d.destroy()
   })
 })

@@ -8,7 +8,6 @@
 import { createRequire } from 'node:module'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { connectWs, makeApi, register, startServers, type TestServers } from '../helpers/server'
-import { openDb, scalar } from '../helpers/sqlite'
 
 const nodeRequire = createRequire(import.meta.url)
 const MAX_PAYLOAD = 256 * 1024
@@ -143,12 +142,9 @@ describe('개인 공간', () => {
       (u: { username: string }) => u.username === 'sec_km',
     ).id
     expect((await call('DELETE', `/rooms/${slug}/members/${mid}`, o)).status).toBe(200)
-    const db = openDb(servers.dbPath)
-    try {
-      expect(scalar(db, 'SELECT COUNT(*) AS c FROM personal_spaces WHERE user_id = ? AND room_slug = ?', mid, slug)).toBe(0)
-    } finally {
-      db.close()
-    }
+    expect(
+      await servers.scalar('SELECT COUNT(*) AS c FROM personal_spaces WHERE user_id = ? AND room_slug = ?', mid, slug),
+    ).toBe(0)
   })
 })
 

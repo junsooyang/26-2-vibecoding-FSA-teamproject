@@ -5,7 +5,6 @@
 import fs from 'node:fs'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { makeApi, register, startServers, type TestServers } from '../helpers/server'
-import { openDb, scalar } from '../helpers/sqlite'
 
 let servers: TestServers
 let call: ReturnType<typeof makeApi>
@@ -91,13 +90,12 @@ describe('보드 삭제', () => {
   it('팀장이 삭제하면 보드·개인 공간·보드 문서·업로드 파일이 모두 정리된다', async () => {
     await call('PUT', `/personal/${fx.slug}`, fx.member, { note: '메모', files: [] })
     // 보드 문서(실시간 서버가 저장하는 docs 테이블)를 미리 만들어 둔다
-    const raw = openDb(servers.dbPath)
-    raw.exec(
-      'CREATE TABLE IF NOT EXISTS docs (name TEXT PRIMARY KEY, state BLOB NOT NULL, updated_at INTEGER NOT NULL)',
+    await servers.exec(
+      'INSERT INTO docs (name, state, updated_at) VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING',
+      fx.slug,
+      new Uint8Array([1, 2, 3]),
+      Date.now(),
     )
-    raw
-      .prepare('INSERT OR REPLACE INTO docs (name, state, updated_at) VALUES (?, ?, ?)')
-      .run(fx.slug, new Uint8Array([1, 2, 3]), Date.now())
     // 업로드 파일
     const up = await fetch(`${servers.api}/files/${fx.slug}?kind=file`, {
       method: 'POST',
@@ -115,12 +113,11 @@ describe('보드 삭제', () => {
     expect(del.status).toBe(200)
 
     expect((await call('GET', `/rooms/${fx.slug}`, fx.owner)).status).toBe(404)
-    const count = (sql: string) => scalar(raw, sql, fx.slug)
-    expect(count('SELECT COUNT(*) FROM personal_spaces WHERE room_slug = ?')).toBe(0)
-    expect(count('SELECT COUNT(*) FROM docs WHERE name = ?')).toBe(0)
-    expect(count('SELECT COUNT(*) FROM files WHERE room_slug = ?')).toBe(0)
+    const count = (sql: string) => servers.scalar(sql, fx.slug)
+    expect(await count('SELECT COUNT(*) FROM personal_spaces WHERE room_slug = ?')).toBe(0)
+    expect(await count('SELECT COUNT(*) FROM docs WHERE name = ?')).toBe(0)
+    expect(await count('SELECT COUNT(*) FROM files WHERE room_slug = ?')).toBe(0)
     expect(fs.existsSync(`${servers.uploadDir}/${fx.slug}`)).toBe(false)
-    raw.close()
   })
 })
 
@@ -166,14 +163,11 @@ describe('팀장 위임', () => {
     expect((await call('GET', `/rooms/${fx.slug}`, fx.owner)).json.role).toBe('member')
     expect((await call('GET', `/rooms/${fx.slug}`, fx.member)).json.role).toBe('owner')
 
-    const raw = openDb(servers.dbPath)
-    const owners = scalar(
-      raw,
+    const owners = await servers.scalar(
       "SELECT COUNT(*) AS c FROM room_members m JOIN rooms r ON r.id = m.room_id WHERE r.slug = ? AND m.role = 'owner'",
       fx.slug,
     )
-    const ownerId = scalar(raw, 'SELECT owner_id FROM rooms WHERE slug = ?', fx.slug)
-    raw.close()
+    const ownerId = await servers.scalar('SELECT owner_id FROM rooms WHERE slug = ?', fx.slug)
     expect(owners).toBe(1)
     expect(ownerId).toBe(fx.ids.member)
   })
