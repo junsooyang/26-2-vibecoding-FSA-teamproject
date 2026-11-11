@@ -4,12 +4,17 @@
   "version": "0.1.0",
   "type": "module",
   "description": "팀플X실시간 협업 보드 (브레인스토밍 / 마인드맵 / WBS)",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "start": "node server/start.js",
     "server": "node server/index.js",
     "api": "node server/api/index.js",
+    "migrate:supabase": "node --env-file-if-exists=.env.migrate server/tools/migrate-to-postgres.js",
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -22,7 +27,8 @@
     "express": "^4.21.1",
     "html-to-image": "^1.11.13",
     "jsonwebtoken": "^9.0.2",
-    "jspdf": "^2.5.2",
+    "jspdf": "4.2.1",
+    "pg": "8.23.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "ws": "^8.18.0",
@@ -31,6 +37,7 @@
     "zustand": "^5.0.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.16",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",

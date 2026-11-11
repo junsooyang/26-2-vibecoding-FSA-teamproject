@@ -1,0 +1,38 @@
+# Render Blueprint: API + 실시간 서버 (npm start, 한 포트)
+# Render 대시보드 › New › Blueprint 에서 이 저장소를 고르면 아래 설정으로 서비스가 만들어진다.
+# sync: false 인 값은 처음 만들 때 대시보드에서 직접 넣는다 (비밀 값은 저장소에 두지 않음).
+services:
+  - type: web
+    name: teamplx-board-server
+    runtime: node
+    plan: free
+    # Supabase 프로젝트와 가까운 지역을 고른다 (서울 Supabase → singapore 가 가장 가까움)
+    region: singapore
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    # Yjs 문서·로그인 실패 기록이 메모리에 있으므로 인스턴스는 1대로만 운영한다
+    numInstances: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      # Supabase › Connect › Session pooler 주소 (Render 는 IPv6 를 못 쓰므로 Direct connection 은 안 됨)
+      - key: DATABASE_URL
+        sync: false
+      - key: STORAGE_DRIVER
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      # Supabase › Settings › API Keys 의 Secret key (sb_secret_...)
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: board-files
+      # Vercel 프론트 주소 (예: https://teamplx-board.vercel.app)
+      - key: CORS_ORIGIN
+        sync: false
+      # Render 앞단 프록시 1단계 (로그인 실패 제한이 사용자 IP 를 구분하도록)
+      - key: TRUST_PROXY
+        value: "1"

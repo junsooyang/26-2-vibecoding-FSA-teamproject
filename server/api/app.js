@@ -28,9 +28,35 @@ function corsOptions() {
   return list.length ? { origin: list } : {}
 }
 
+/**
+ * 프록시 신뢰 설정 (TRUST_PROXY).
+ *
+ * 배포 서비스는 앞단 프록시를 거쳐 요청을 넘기므로, 설정하지 않으면 모든 요청의 IP 가 프록시 IP 로 보인다.
+ * 그러면 로그인 실패 제한(IP + 아이디)이 IP 를 구분하지 못해, 누구나 남의 아이디를 10번 틀려 잠글 수 있다.
+ *
+ *  - 비움(기본) : 믿지 않음. 프록시 없이 직접 받는 로컬 개발용. X-Forwarded-For 를 무시한다.
+ *  - 숫자 N     : 앞단 프록시 N 단계를 믿는다. 대부분의 배포 서비스는 1.
+ *  - 그 밖      : Express 형식 그대로 (예: loopback, 10.0.0.0/8 처럼 쉼표로 여러 개)
+ *  - true       : 모든 프록시를 믿음. X-Forwarded-For 를 누구나 꾸밀 수 있어 위험하므로 권하지 않는다.
+ */
+export function trustProxySetting(raw = process.env.TRUST_PROXY) {
+  const v = String(raw ?? '').trim()
+  if (!v || v === 'false' || v === '0') return false
+  if (/^\d+$/.test(v)) return Number(v)
+  if (v === 'true') {
+    console.warn('[api] TRUST_PROXY=true 는 IP 위조에 취약해요. 프록시 단계 수(예: 1)를 쓰세요.')
+    return true
+  }
+  return v
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
 export function createApp() {
   const app = express()
   app.disable('x-powered-by')
+  app.set('trust proxy', trustProxySetting())
   app.use(cors(corsOptions()))
   // 기본 보안 헤더 (API 응답용)
   app.use((_req, res, next) => {

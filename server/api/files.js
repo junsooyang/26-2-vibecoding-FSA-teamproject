@@ -2,8 +2,8 @@
  * 보드 파일(사진/첨부) 저장 API.
  *
  * 예전에는 파일을 base64(data URL)로 보드 문서(Yjs)에 그대로 넣었다. 그러면 문서가 커져서
- * 새로 접속할 때마다 전부 내려받고 DB 도 빠르게 불어난다. 이제 파일 본문은 서버 디스크에 두고
- * 문서에는 짧은 참조 문자열(fsafile:<slug>/<id>)만 저장한다.
+ * 새로 접속할 때마다 전부 내려받고 DB 도 빠르게 불어난다. 이제 파일 본문은 저장소(server/storage.js:
+ * 서버 디스크 또는 Supabase Storage)에 두고, 문서에는 짧은 참조 문자열(fsafile:<slug>/<id>)만 저장한다.
  *
  *  POST /api/files/:slug?kind=image|file   파일 업로드 (본문 = 원본 바이트)
  *  GET  /api/files/:slug/:id               파일 내려받기
@@ -17,15 +17,12 @@
  */
 import express from 'express'
 import crypto from 'node:crypto'
-import fs from 'node:fs'
 import path from 'node:path'
-import db from './db.js'
-import { requireAuth } from './auth.js'
+import { db } from '../db.js'
+import { storage } from '../storage.js'
+import { asyncRoute, requireAuth } from './auth.js'
 
 const router = express.Router()
-
-/** 업로드 파일이 저장되는 폴더 (환경변수 UPLOAD_DIR 로 변경 가능) */
-export const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || 'uploads')
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024 // 첨부 파일 최대 10MB
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 사진 최대 5MB
@@ -38,36 +35,30 @@ const IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp
 
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
-const findRoomBySlug = db.prepare('SELECT * FROM rooms WHERE slug = ?')
-const findMember = db.prepare('SELECT * FROM room_members WHERE room_id = ? AND user_id = ?')
-const insertFile = db.prepare(
-  `INSERT INTO files (id, room_slug, name, mime, size, uploader_id, created_at)
-   VALUES (?, ?, ?, ?, ?, ?, ?)`,
-)
-const findFile = db.prepare('SELECT * FROM files WHERE id = ? AND room_slug = ?')
-const deleteFilesByRoom = db.prepare('DELETE FROM files WHERE room_slug = ?')
-
-/** 보드 삭제 시 호출: 해당 보드의 파일 기록과 디스크 폴더를 함께 지운다. */
-export function removeRoomFiles(slug) {
-  deleteFilesByRoom.run(slug)
-  const dir = path.join(UPLOAD_DIR, slug)
-  // slug 가 UPLOAD_DIR 밖을 가리키지 않는지 방어적으로 확인
-  if (path.dirname(dir) === UPLOAD_DIR) {
-    fs.rmSync(dir, { recursive: true, force: true })
-  }
+/** 보드 삭제 시 호출: 해당 보드의 파일 본문(저장소)과 기록(DB)을 함께 지운다. */
+export async function removeRoomFiles(slug) {
+  const rows = await db.all('SELECT id FROM files WHERE room_slug = ?', [slug])
+  await storage.removeRoom(
+    slug,
+    rows.map((r) => r.id),
+  )
+  await db.run('DELETE FROM files WHERE room_slug = ?', [slug])
 }
 
 /** 로그인한 사용자가 이 보드의 멤버(초대 대기 제외)인지 확인하고 req.room 을 채운다. */
-function requireRoomMember(req, res, next) {
-  const room = findRoomBySlug.get(req.params.slug)
+const requireRoomMember = asyncRoute(async (req, res, next) => {
+  const room = await db.get('SELECT * FROM rooms WHERE slug = ?', [req.params.slug])
   if (!room) return res.status(404).json({ error: '존재하지 않는 방입니다.' })
-  const membership = findMember.get(room.id, req.user.id)
+  const membership = await db.get('SELECT role FROM room_members WHERE room_id = ? AND user_id = ?', [
+    room.id,
+    req.user.id,
+  ])
   if (!membership || membership.role === 'invited') {
     return res.status(403).json({ error: '이 방에 접근할 권한이 없습니다.' })
   }
   req.room = room
   next()
-}
+})
 
 router.use(requireAuth)
 
@@ -88,7 +79,7 @@ router.post(
   '/:slug',
   requireRoomMember,
   express.raw({ type: () => true, limit: MAX_FILE_BYTES }),
-  (req, res) => {
+  asyncRoute(async (req, res) => {
     const body = req.body
     if (!Buffer.isBuffer(body) || body.length === 0) {
       return res.status(400).json({ error: '업로드할 파일이 비어 있습니다.' })
@@ -110,10 +101,13 @@ router.post(
     }
 
     const id = crypto.randomUUID()
-    const dir = path.join(UPLOAD_DIR, req.room.slug)
-    fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(path.join(dir, id), body)
-    insertFile.run(id, req.room.slug, name, mime, body.length, req.user.id, Date.now())
+    // 저장소에는 안전한 형식만 기록한다 (내려줄 때도 같은 규칙으로 다시 정한다)
+    await storage.put(req.room.slug, id, body, IMAGE_MIMES.has(mime) ? mime : 'application/octet-stream')
+    await db.run(
+      `INSERT INTO files (id, room_slug, name, mime, size, uploader_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, req.room.slug, name, mime, body.length, req.user.id, Date.now()],
+    )
 
     res.status(201).json({
       file: {
@@ -125,32 +119,38 @@ router.post(
         ref: `fsafile:${req.room.slug}/${id}`,
       },
     })
-  },
+  }),
 )
 
 // 내려받기
-router.get('/:slug/:id', requireRoomMember, (req, res) => {
-  if (!ID_RE.test(req.params.id)) return res.status(404).json({ error: '파일을 찾을 수 없습니다.' })
-  const row = findFile.get(req.params.id, req.room.slug)
-  const abs = path.join(UPLOAD_DIR, req.room.slug, req.params.id)
-  if (!row || !fs.existsSync(abs)) return res.status(404).json({ error: '파일을 찾을 수 없습니다.' })
+router.get(
+  '/:slug/:id',
+  requireRoomMember,
+  asyncRoute(async (req, res) => {
+    if (!ID_RE.test(req.params.id)) return res.status(404).json({ error: '파일을 찾을 수 없습니다.' })
+    const row = await db.get('SELECT * FROM files WHERE id = ? AND room_slug = ?', [
+      req.params.id,
+      req.room.slug,
+    ])
+    const stream = row ? await storage.open(req.room.slug, req.params.id) : null
+    if (!row || !stream) return res.status(404).json({ error: '파일을 찾을 수 없습니다.' })
 
-  const isImage = IMAGE_MIMES.has(row.mime)
-  res.setHeader('Content-Type', isImage ? row.mime : 'application/octet-stream')
-  res.setHeader('Content-Length', String(row.size))
-  res.setHeader('X-Content-Type-Options', 'nosniff')
-  res.setHeader('Cache-Control', 'private, max-age=86400')
-  res.setHeader(
-    'Content-Disposition',
-    `${isImage ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(row.name)}`,
-  )
+    const isImage = IMAGE_MIMES.has(row.mime)
+    res.setHeader('Content-Type', isImage ? row.mime : 'application/octet-stream')
+    res.setHeader('Content-Length', String(row.size))
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Cache-Control', 'private, max-age=86400')
+    res.setHeader(
+      'Content-Disposition',
+      `${isImage ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(row.name)}`,
+    )
 
-  const stream = fs.createReadStream(abs)
-  stream.on('error', () => {
-    if (!res.headersSent) res.status(500).json({ error: '파일을 읽지 못했습니다.' })
-    else res.destroy()
-  })
-  stream.pipe(res)
-})
+    stream.on('error', () => {
+      if (!res.headersSent) res.status(500).json({ error: '파일을 읽지 못했습니다.' })
+      else res.destroy()
+    })
+    stream.pipe(res)
+  }),
+)
 
 export default router

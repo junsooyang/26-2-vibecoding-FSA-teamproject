@@ -17,23 +17,27 @@
  * 영속화: 방별 Yjs 문서를 SQLite 에 저장하여 서버를 재시작해도 보드 내용이 유지된다. (persistence.js)
  */
 import http from 'node:http'
-import { DatabaseSync } from 'node:sqlite'
 import { WebSocketServer } from 'ws'
 import jwt from 'jsonwebtoken'
 import { setupWSConnection, setPersistence } from 'y-websocket/bin/utils'
-import { persistence, closeDb } from './persistence.js'
-import { JWT_SECRET, DB_PATH, WS_MAX_PAYLOAD } from './config.js'
+import { persistence, flushPendingWrites } from './persistence.js'
+import { db } from './db.js'
+import { JWT_SECRET, WS_MAX_PAYLOAD } from './config.js'
 
 /** 닫힘 코드 (4000번대는 애플리케이션 용도로 예약된 영역) */
 export const CLOSE_ROOM_DELETED = 4404
 export const CLOSE_FORBIDDEN = 4403
 
-/** 요청 URL(/<slug>?token=...) 에서 보드 slug 와 토큰을 꺼낸다. */
+/**
+ * 요청 URL(/<slug>?token=... 또는 /ws/<slug>?token=...) 에서 보드 slug 와 토큰을 꺼낸다.
+ * /ws/ 접두사는 API 와 한 포트로 합쳐 실행할 때(server/start.js) 주소를 알아보기 쉽게 쓰는 용도다.
+ * slug 에는 '/' 가 들어갈 수 없으므로 두 형식이 헷갈리지 않는다.
+ */
 function parseRequest(req) {
   const url = new URL(req.url || '/', 'http://localhost')
   let slug = ''
   try {
-    slug = decodeURIComponent(url.pathname.replace(/^\/+/, ''))
+    slug = decodeURIComponent(url.pathname.replace(/^\/+/, '').replace(/^ws\//, ''))
   } catch {
     slug = ''
   }
@@ -46,48 +50,48 @@ function rejectUpgrade(socket, status, message) {
 }
 
 /**
- * @param {{ recheckMs?: number, maxPayload?: number }} [options]
+ * @param {{ recheckMs?: number, maxPayload?: number, server?: import('node:http').Server }} [options]
  *   recheckMs: 연결된 사용자의 멤버십을 다시 확인하는 간격 (기본 2000ms)
  *   maxPayload: 메시지 하나의 최대 바이트 (기본 WS_MAX_PAYLOAD_MB, 16MB)
+ *   server: 이미 있는 HTTP 서버(예: Express API)에 붙인다. 없으면 실시간 전용 서버를 새로 만든다.
+ *           붙인 경우 close() 는 그 서버를 닫지 않는다(만든 쪽이 닫는다).
  */
 export function createRealtimeServer(options = {}) {
   const recheckMs = options.recheckMs ?? 2000
   const maxPayload = options.maxPayload ?? WS_MAX_PAYLOAD
 
-  // Yjs 문서 영속화 핸들러 등록 (방 로드 시 복원 / 변경 시 SQLite 저장)
+  // Yjs 문서 영속화 핸들러 등록 (방 로드 시 복원 / 변경 시 DB 저장)
   setPersistence(persistence)
 
-  // 멤버십 확인용 DB 연결 (rooms / room_members 는 API 서버가 만든다)
-  const authDb = new DatabaseSync(DB_PATH)
-
   /**
-   * 사용자의 보드 접근 상태를 판정한다.
-   * 반환: 'ok' | 'deleted'(보드 없음) | 'forbidden'(멤버 아님/초대 대기)
-   * DB 조회에 실패하면 안전하게 'forbidden'(접근 거부) 쪽으로 처리한다.
+   * 사용자의 보드 접근 상태를 판정한다. (API 서버와 같은 DB — server/db.js)
+   * 반환: 'ok' | 'deleted'(보드 없음) | 'forbidden'(멤버 아님/초대 대기) | 'error'(DB 조회 실패)
    */
-  function checkAccess(slug, userId) {
+  async function checkAccess(slug, userId) {
     try {
-      if (!authDb.prepare('SELECT 1 AS ok FROM rooms WHERE slug = ?').get(slug)) return 'deleted'
-      const row = authDb
-        .prepare(
-          `SELECT m.role AS role
-             FROM room_members m
-             JOIN rooms r ON r.id = m.room_id
-            WHERE r.slug = ? AND m.user_id = ?`,
-        )
-        .get(slug, userId)
+      if (!(await db.get('SELECT 1 AS ok FROM rooms WHERE slug = ?', [slug]))) return 'deleted'
+      const row = await db.get(
+        `SELECT m.role AS role
+           FROM room_members m
+           JOIN rooms r ON r.id = m.room_id
+          WHERE r.slug = ? AND m.user_id = ?`,
+        [slug, userId],
+      )
       if (!row || row.role === 'invited') return 'forbidden'
       return 'ok'
     } catch (err) {
       console.error('[y-websocket] 멤버십 확인 실패:', err instanceof Error ? err.message : err)
-      return 'forbidden'
+      return 'error'
     }
   }
 
-  const server = http.createServer((_req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
-    res.end('y-websocket 실시간 협업 서버')
-  })
+  const ownsServer = !options.server
+  const server =
+    options.server ??
+    http.createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('y-websocket 실시간 협업 서버')
+    })
 
   // 메시지 하나의 최대 크기. 넘으면 ws 가 연결을 끊는다(1009). 기본값(100MB)은 메모리 고갈에 취약하다.
   const wss = new WebSocketServer({ noServer: true, maxPayload })
@@ -106,10 +110,19 @@ export function createRealtimeServer(options = {}) {
       return rejectUpgrade(socket, 401, 'Unauthorized')
     }
 
-    const access = checkAccess(slug, userId)
-    if (access === 'deleted') return rejectUpgrade(socket, 404, 'Not Found')
-    if (access !== 'ok') return rejectUpgrade(socket, 403, 'Forbidden')
+    // DB 를 기다리는 동안 소켓이 끊기면 조용히 정리한다 (처리기가 없으면 오류로 프로세스가 죽을 수 있음)
+    socket.on('error', () => socket.destroy())
+    checkAccess(slug, userId).then((access) => {
+      if (socket.destroyed) return
+      if (access === 'deleted') return rejectUpgrade(socket, 404, 'Not Found')
+      // DB 를 확인하지 못하면 들여보내지 않는다 (fail closed)
+      if (access === 'error') return rejectUpgrade(socket, 503, 'Service Unavailable')
+      if (access !== 'ok') return rejectUpgrade(socket, 403, 'Forbidden')
+      accept(req, socket, head, slug, userId)
+    })
+  })
 
+  function accept(req, socket, head, slug, userId) {
     wss.handleUpgrade(req, socket, head, (ws) => {
       sessions.set(ws, { slug, userId })
       ws.on('close', () => sessions.delete(ws))
@@ -122,33 +135,45 @@ export function createRealtimeServer(options = {}) {
       // docName 을 명시해서 URL 파싱 방식에 의존하지 않는다.
       setupWSConnection(ws, req, { docName: slug })
     })
-  })
+  }
 
   // 연결된 뒤 보드가 삭제되거나 멤버에서 제외되면 연결을 끊는다.
-  const recheckTimer = setInterval(() => {
-    for (const [ws, { slug, userId }] of sessions) {
-      const access = checkAccess(slug, userId)
-      if (access === 'ok') continue
-      sessions.delete(ws)
-      ws.close(access === 'deleted' ? CLOSE_ROOM_DELETED : CLOSE_FORBIDDEN, access)
+  // DB 가 잠깐 응답하지 않으면('error') 다들 끊지 않고 다음 확인 때 다시 본다.
+  let rechecking = false
+  const recheckTimer = setInterval(async () => {
+    if (rechecking || sessions.size === 0) return
+    rechecking = true
+    try {
+      // 같은 (보드, 사용자) 는 한 번만 조회한다
+      const results = new Map()
+      for (const { slug, userId } of sessions.values()) {
+        const key = `${slug}\u0000${userId}`
+        if (!results.has(key)) results.set(key, checkAccess(slug, userId))
+      }
+      for (const [ws, { slug, userId }] of [...sessions]) {
+        const access = await results.get(`${slug}\u0000${userId}`)
+        if (access === 'ok' || access === 'error' || !sessions.has(ws)) continue
+        sessions.delete(ws)
+        ws.close(access === 'deleted' ? CLOSE_ROOM_DELETED : CLOSE_FORBIDDEN, access)
+      }
+    } finally {
+      rechecking = false
     }
   }, recheckMs)
 
-  /** 서버와 DB 를 정리한다. */
+  /** 연결을 끊고, 마지막 저장이 끝나면 DB 를 닫는다. */
   function close() {
     clearInterval(recheckTimer)
     return new Promise((resolve) => {
       for (const ws of wss.clients) ws.terminate()
+      const finish = async () => {
+        await flushPendingWrites()
+        await db.close()
+        resolve()
+      }
       wss.close(() => {
-        server.close(() => {
-          closeDb()
-          try {
-            authDb.close()
-          } catch {
-            // ignore
-          }
-          resolve()
-        })
+        if (ownsServer) server.close(() => finish())
+        else finish()
       })
     })
   }

@@ -12,10 +12,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# env
+# env (비밀 값이 들어 있는 파일은 모두 제외, 예시 파일만 커밋)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # 업로드된 사진/첨부 파일 (서버 로컬 데이터 - 커밋하지 않음)
 uploads/

@@ -5,7 +5,7 @@
 import express from 'express'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
-import db from './db.js'
+import { db } from '../db.js'
 
 import { JWT_SECRET } from '../config.js'
 
@@ -77,10 +77,14 @@ export function requireAuth(req, res, next) {
 
 const router = express.Router()
 
-const insertUser = db.prepare(
-  'INSERT INTO users (username, name, password_hash, created_at) VALUES (?, ?, ?, ?)',
-)
-const findByUsername = db.prepare('SELECT * FROM users WHERE username = ?')
+// 같은 아이디로 동시에 가입해도 한 명만 성공하도록, 중복이면 아무 행도 돌려주지 않는다.
+const insertUser = (username, name, hash) =>
+  db.get(
+    `INSERT INTO users (username, name, password_hash, created_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT (username) DO NOTHING RETURNING id`,
+    [username, name, hash, Date.now()],
+  )
+const findByUsername = (username) => db.get('SELECT * FROM users WHERE username = ?', [username])
 
 // 회원가입
 router.post(
@@ -109,13 +113,14 @@ router.post(
     if (Buffer.byteLength(password, 'utf8') > PASSWORD_MAX_BYTES) {
       return res.status(400).json({ error: '비밀번호가 너무 깁니다. (영문 기준 72자 이하)' })
     }
-    if (findByUsername.get(username)) {
+    if (await findByUsername(username)) {
       return res.status(409).json({ error: '이미 사용 중인 아이디입니다.' })
     }
 
     const hash = await bcrypt.hash(password, 10)
-    const info = insertUser.run(username, cleanName, hash, Date.now())
-    const user = { id: Number(info.lastInsertRowid), username, name: cleanName }
+    const inserted = await insertUser(username, cleanName, hash)
+    if (!inserted) return res.status(409).json({ error: '이미 사용 중인 아이디입니다.' })
+    const user = { id: Number(inserted.id), username, name: cleanName }
     return res.status(201).json({ token: signToken(user), user })
   }),
 )
@@ -134,7 +139,7 @@ router.post(
         .status(429)
         .json({ error: '로그인 시도가 너무 많아요. 10분 뒤에 다시 시도하세요.' })
     }
-    const row = USERNAME_RE.test(username) ? findByUsername.get(username) : undefined
+    const row = USERNAME_RE.test(username) ? await findByUsername(username) : undefined
     // 아이디가 없어도 같은 시간만큼 비교한다.
     const ok = await bcrypt.compare(
       Buffer.byteLength(password, 'utf8') > PASSWORD_MAX_BYTES ? '' : password,
