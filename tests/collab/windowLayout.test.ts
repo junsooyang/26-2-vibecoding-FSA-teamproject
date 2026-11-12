@@ -26,6 +26,15 @@ describe('채팅 창 위치 (clampRect)', () => {
     expect(right.x).toBeLessThanOrEqual(VP.width - 80)
   })
 
+  it('화면을 크게 확대해 공간이 작으면 최소 크기도 화면에 맞춰 줄어든다 (창이 화면 밖으로 잘리지 않게)', () => {
+    const vp = { width: 640, height: 300 }
+    const r = clampRect({ x: 100, y: 60, width: 340, height: 480 }, vp, 60)
+    expect(r.height).toBe(300 - 60 - 8)
+    expect(r.y + r.height).toBeLessThanOrEqual(vp.height)
+    const d = defaultChatRect(vp, 60)
+    expect(d.y + d.height).toBeLessThanOrEqual(vp.height)
+  })
+
   it('너무 작게·너무 크게 만들 수 없다', () => {
     const small = clampRect({ x: 0, y: 100, width: 10, height: 10 }, VP, 60)
     expect(small.width).toBe(WINDOW_MIN.width)

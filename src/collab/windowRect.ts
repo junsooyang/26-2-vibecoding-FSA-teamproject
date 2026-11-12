@@ -17,15 +17,21 @@ export interface Viewport {
 
 /** 창 최소 크기 */
 export const WINDOW_MIN = { width: 260, height: 260 }
+/** 화면이 아주 작을 때(크게 확대) 허용하는 최소 크기 */
+const SMALL_MIN = { width: 200, height: 160 }
 /** 창 머리(끌기 손잡이)가 화면 안에 최소 이만큼은 남아 있어야 다시 잡을 수 있다 */
 const KEEP_VISIBLE = 80
 
 /** 창이 화면 밖으로 나가지 않게 위치·크기를 맞춘다 (머리는 항상 화면 안) */
 export function clampRect(rect: WindowRect, vp: Viewport, minTop = 0): WindowRect {
-  const width = Math.round(Math.min(Math.max(rect.width, WINDOW_MIN.width), Math.max(WINDOW_MIN.width, vp.width - 16)))
-  const height = Math.round(
-    Math.min(Math.max(rect.height, WINDOW_MIN.height), Math.max(WINDOW_MIN.height, vp.height - minTop - 8)),
-  )
+  // 쓸 수 있는 최대 크기 (화면 확대·작은 창에서는 기본 최소 크기보다 작을 수 있다)
+  const maxW = Math.max(SMALL_MIN.width, vp.width - 16)
+  const maxH = Math.max(SMALL_MIN.height, vp.height - minTop - 8)
+  // 최소 크기도 화면에 들어가게 줄인다 → 확대해도 창 아래쪽(입력칸)이 화면 밖으로 잘리지 않는다
+  const minW = Math.min(WINDOW_MIN.width, maxW)
+  const minH = Math.min(WINDOW_MIN.height, maxH)
+  const width = Math.round(Math.min(Math.max(rect.width, minW), maxW))
+  const height = Math.round(Math.min(Math.max(rect.height, minH), maxH))
   // 가로: 창이 화면 밖으로 반쯤 나가는 것까지는 허용하되 KEEP_VISIBLE 만큼은 보이게
   const x = Math.round(Math.min(Math.max(rect.x, KEEP_VISIBLE - width), vp.width - KEEP_VISIBLE))
   // 세로: 머리가 툴바 아래 ~ 화면 아래 사이에 오게
@@ -39,7 +45,7 @@ export function clampRect(rect: WindowRect, vp: Viewport, minTop = 0): WindowRec
  */
 export function defaultChatRect(vp: Viewport, top: number): WindowRect {
   const width = 340
-  const height = Math.min(480, Math.max(WINDOW_MIN.height, vp.height - top - 24))
+  const height = Math.min(480, vp.height - top - 24)
   const sidePanel = vp.width >= 1100 ? 356 : 0
   return clampRect({ x: vp.width - width - 16 - sidePanel, y: top, width, height }, vp, top)
 }

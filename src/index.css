@@ -4741,3 +4741,230 @@ button.history-item:focus-visible {
   font-size: 14px;
   padding: 2px 6px;
 }
+
+/* ======================================================================
+   화면 확대·축소 / 작은 창 대응 (반응형)
+   브라우저를 확대하면(Ctrl +) CSS 기준 화면 너비·높이가 함께 줄어든다.
+   너비뿐 아니라 "높이"가 낮아져도 내용이 잘리지 않고 스크롤되게 한다.
+   ====================================================================== */
+
+/* 주소창이 들어가고 나오는 모바일에서도 정확한 화면 높이 */
+.lobby {
+  min-height: 100dvh;
+}
+
+.side-panel {
+  height: 100dvh;
+}
+
+/* --- 개인 공간: 높이가 모자라도 노트 목록이 납작해지지 않게 ---
+   (목록만 줄어들어 0px 이 되던 문제 → 항목은 줄지 않고, 개인 공간 전체가 스크롤) */
+.personal-body > * {
+  flex-shrink: 0;
+}
+
+.left-dock .personal-body {
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+
+.personal-note-list {
+  max-height: min(180px, 34vh);
+  overscroll-behavior: contain;
+}
+
+.personal-note {
+  min-height: clamp(90px, 24vh, 160px);
+}
+
+.left-dock {
+  width: min(320px, 85vw);
+}
+
+/* --- 툴바에서 펼쳐지는 목록·팝오버가 화면 아래로 잘리지 않게 --- */
+.share-submenu {
+  max-height: calc(100vh - var(--toolbar-h, 56px) - 16px);
+  overflow-y: auto;
+}
+
+.edge-style-pop {
+  max-height: calc(100vh - var(--toolbar-h, 56px) - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.deadline-alert {
+  max-height: calc(100vh - var(--toolbar-h, 56px) - 24px);
+}
+
+/* --- 빈 보드 안내 카드: 툴바 아래 남은 공간 안에서 --- */
+.empty-guide {
+  padding: calc(var(--toolbar-h, 56px) + 8px) 12px 12px;
+}
+
+/* 카드는 더블클릭을 보드로 통과시켜야 해서(pointer-events: none) 스크롤 대신 남은 공간 안에 맞춘다 */
+.empty-card {
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* --- 채팅 창: 최소 크기도 화면 안에 들어가게 (JS 의 clampRect 와 함께) --- */
+.chat-window {
+  min-width: min(260px, calc(100vw - 16px));
+  min-height: min(260px, calc(100vh - var(--toolbar-h, 56px) - 8px));
+}
+
+/* --- 간트차트: 막대 칸이 화면 높이에 맞춰 줄어든다 --- */
+.gantt-scroll {
+  min-height: min(120px, 30vh);
+}
+
+/* --- 중간 너비(작은 노트북·확대 125~150%) : 툴바를 조금 촘촘하게 --- */
+@media (max-width: 1100px) {
+  .toolbar {
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  .tool-tip-inline {
+    display: none;
+  }
+}
+
+/* ======================================================================
+   낮은 화면 (확대 200% 전후 · 가로로 눕힌 휴대폰 등)
+   ====================================================================== */
+@media (max-height: 600px) {
+  /* 툴바: 여러 줄이 되어도 보드를 덜 가리게 촘촘하게 */
+  .toolbar {
+    gap: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+
+  .toolbar button {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .tool-group {
+    gap: 4px;
+    padding: 2px 5px;
+  }
+
+  .tool-step,
+  .tool-tip-inline {
+    display: none;
+  }
+
+  /* 오른쪽 패널(캘린더·대시보드·댓글·투표·변경 기록): 칸마다 따로 줄이지 않고 패널 전체가 스크롤
+     (달력·입력칸에 밀려 일정 목록이 0px 이 되던 문제) */
+  .side-panel {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .side-panel > * {
+    flex-shrink: 0;
+  }
+
+  .side-panel .comment-list,
+  .side-panel .dash-body,
+  .side-panel .poll-body,
+  .side-panel .cal-event-list,
+  .side-panel .history-body {
+    flex: 0 0 auto;
+    overflow: visible;
+    min-height: 0;
+  }
+
+  .side-head {
+    padding: 10px 14px;
+  }
+
+  /* 개인 공간: 머리를 줄이고 본문 공간을 넓힌다 */
+  .left-dock .side-head {
+    padding: 10px 14px;
+  }
+
+  .personal-body {
+    padding: 10px 12px;
+  }
+
+  /* 가운데 창: 여백을 줄이고 위쪽부터 보이게 */
+  .panel-overlay {
+    align-items: start;
+    padding: 8px;
+  }
+
+  .panel {
+    padding: 16px;
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+
+  .panel-head {
+    margin-bottom: 10px;
+  }
+
+  .ai-panel,
+  .panel.gantt-panel {
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+
+  .text-input-area {
+    min-height: 80px;
+  }
+
+  /* 채팅 창 */
+  .chat-window-head {
+    padding: 8px 12px;
+  }
+
+  .chat-list {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  /* 빈 보드 안내 카드 */
+  .empty-card {
+    padding: 14px 18px;
+  }
+
+  .empty-card h2 {
+    margin-bottom: 10px;
+    font-size: 16px;
+  }
+
+  .flow-steps {
+    gap: 8px;
+  }
+
+  .flow-steps p {
+    margin: 2px 0 0;
+    font-size: 12px;
+  }
+
+  /* 로그인·보드 목록: 가운데 정렬 대신 위에서부터 (위가 잘리지 않게) */
+  .lobby {
+    place-items: start center;
+  }
+
+  .lobby-card {
+    padding: 20px;
+  }
+
+  /* 미니맵은 낮은 화면에서 보드를 너무 가린다 */
+  .react-flow__minimap {
+    display: none;
+  }
+}
+
+/* 아주 낮은 화면: 좁은 화면용 채팅 시트도 화면 거의 전체 */
+@media (max-width: 720px) and (max-height: 600px) {
+  .chat-window {
+    height: calc(100dvh - 8px) !important;
+    min-height: 0;
+  }
+}
