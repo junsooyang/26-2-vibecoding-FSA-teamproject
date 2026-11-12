@@ -11,6 +11,8 @@ const nodeRequire = createRequire(import.meta.url)
 const {
   breakdownTaskWithAi,
   clampTaskCount,
+  defaultAiModelId,
+  listAiModels,
   parseAndSanitizeTasks,
   resolveAiProvider,
 } = nodeRequire('../../server/ai.js') as typeof import('../../server/ai.js')
@@ -144,6 +146,42 @@ describe('AI 프로바이더 및 응답 파서 (server/ai.js)', () => {
   })
 })
 
+describe('모델 선택 (server/ai.js)', () => {
+  it('키가 있는 모델만 고를 수 있고, 목록에 키 값은 담기지 않는다', () => {
+    const list = listAiModels({ GEMINI_API_KEY: 'secret-gemini' })
+    expect(list.map((m) => [m.id, m.available])).toEqual([
+      ['gemini', true],
+      ['openai', false],
+      ['rule', true],
+    ])
+    expect(list.find((m) => m.id === 'openai')?.reason).toMatch(/키/)
+    expect(JSON.stringify(list)).not.toContain('secret-gemini')
+    expect(defaultAiModelId({ GEMINI_API_KEY: 'secret-gemini' })).toBe('gemini')
+    expect(defaultAiModelId({})).toBe('rule')
+  })
+
+  it('AI_PROVIDER 로 하나를 정해 두면 나머지는 고를 수 없다', () => {
+    const list = listAiModels({ AI_PROVIDER: 'gemini', GEMINI_API_KEY: 'g', OPENAI_API_KEY: 'o' })
+    expect(list.filter((m) => m.available).map((m) => m.id)).toEqual(['gemini'])
+  })
+
+  it('키가 없는 모델을 고르면 외부 호출 없이 오류, 기본 단계 추천을 고르면 키가 있어도 호출하지 않는다', async () => {
+    let called = false
+    const spy = (async () => {
+      called = true
+      return { ok: true, status: 200, json: async () => ({}) }
+    }) as unknown as typeof fetch
+    const env = { GEMINI_API_KEY: 'g' }
+    await expect(
+      breakdownTaskWithAi({ topic: '앱 개발', model: 'openai' }, { env, fetchImpl: spy }),
+    ).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE' })
+    const r = await breakdownTaskWithAi({ topic: '앱 개발', model: 'rule' }, { env, fetchImpl: spy })
+    expect(r.provider).toBe('rule')
+    expect(r.fallback).toBeUndefined()
+    expect(called).toBe(false)
+  })
+})
+
 describe('외부 AI 가 실패하면 기본 단계 추천으로 대신 (server/ai.js)', () => {
   const env = { GEMINI_API_KEY: 'k' }
 
@@ -239,5 +277,29 @@ describe('POST /api/ai/:slug/breakdown 권한 및 입력 검증', () => {
     expect((await call('POST', `/ai/${slug}/breakdown`, owner, { topic: ['배열'] })).status).toBe(400)
     expect((await call('POST', `/ai/${slug}/breakdown`, owner, { topic: '가'.repeat(501) })).status).toBe(400)
     expect((await call('POST', `/ai/${slug}/breakdown`, owner, { topic: '정상', context: 123 })).status).toBe(400)
+  })
+
+  it('모델 목록은 로그인해야 보이고, 키가 없는 모델·모르는 모델로 요청하면 400', async () => {
+    const owner = await register(call, 'ai_models')
+    const slug = (await call('POST', '/rooms', owner, { name: '모델보드' })).json.room.slug
+
+    expect((await call('GET', '/ai/models', null)).status).toBe(401)
+    const list = await call('GET', '/ai/models', owner)
+    expect(list.status).toBe(200)
+    // 테스트 서버에는 키가 없다 → 기본 단계 추천만 쓸 수 있다
+    expect(list.json.defaultModel).toBe('rule')
+    const available = list.json.models.filter((m: { available: boolean }) => m.available)
+    expect(available.map((m: { id: string }) => m.id)).toEqual(['rule'])
+
+    const noKey = await call('POST', `/ai/${slug}/breakdown`, owner, { topic: '앱 개발', model: 'openai' })
+    expect(noKey.status).toBe(400)
+    expect(noKey.json.error).toMatch(/쓸 수 없어요/)
+    expect((await call('POST', `/ai/${slug}/breakdown`, owner, { topic: '앱 개발', model: 'claude' })).status).toBe(400)
+    expect((await call('POST', `/ai/${slug}/breakdown`, owner, { topic: '앱 개발', model: 5 })).status).toBe(400)
+
+    const ok = await call('POST', `/ai/${slug}/breakdown`, owner, { topic: '앱 개발', model: 'rule', count: 3 })
+    expect(ok.status).toBe(200)
+    expect(ok.json.provider).toBe('rule')
+    expect(ok.json.tasks).toHaveLength(3)
   })
 })

@@ -1,6 +1,9 @@
 /**
  * AI 기반 WBS 세부 작업 분해 엔진 (프로바이더 교체 가능 구조).
  *
+ * 사용자는 AI 창에서 모델을 고를 수 있다 (listAiModels). 키가 있는 모델만 고를 수 있고,
+ * 고르지 않으면 아래 규칙으로 정한 서버 기본값을 쓴다.
+ *
  * 지원 프로바이더 (AI_PROVIDER 환경변수로 선택, 기본값 'auto'):
  *  - 'gemini' : Google Gemini REST API (GEMINI_API_KEY, GEMINI_MODEL 기본 'gemini-3.1-flash-lite')
  *  - 'openai' : OpenAI 호환 Chat Completions API (OPENAI_API_KEY, OPENAI_MODEL 기본 'gpt-4o-mini', OPENAI_BASE_URL)
@@ -82,6 +85,91 @@ export function resolveAiProvider(env = process.env) {
     }
   }
   return { provider: 'rule', model: 'rule-wbs-v1' }
+}
+
+// ---------------------------------------------------------------------------
+// 사용자가 고를 수 있는 모델 목록
+//  - 서버에 키가 있는 모델만 "사용 가능". 키 값은 절대 내보내지 않는다.
+//  - AI_PROVIDER 로 하나를 강제하면 나머지는 고를 수 없다.
+// ---------------------------------------------------------------------------
+
+/** 고를 수 있는 모델 id (요청 본문의 model 값은 이 중 하나여야 한다) */
+export const AI_MODEL_IDS = ['gemini', 'openai', 'rule']
+
+const MODEL_LABELS = {
+  gemini: 'Google Gemini',
+  openai: 'OpenAI GPT',
+  rule: '기본 단계 추천 (AI 없이)',
+}
+
+/** 모델 id 하나를 실제 호출 설정으로 바꾼다. 쓸 수 없으면 null */
+function configFor(id, env) {
+  const geminiKey = String(env.GEMINI_API_KEY || '').trim()
+  const openaiKey = String(env.OPENAI_API_KEY || '').trim()
+  if (id === 'gemini' && geminiKey) {
+    return { provider: 'gemini', apiKey: geminiKey, model: String(env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL).trim() }
+  }
+  if (id === 'openai' && openaiKey) {
+    return {
+      provider: 'openai',
+      apiKey: openaiKey,
+      model: String(env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL).trim(),
+      baseUrl: String(env.OPENAI_BASE_URL || DEFAULT_OPENAI_BASE).trim().replace(/\/+$/, ''),
+    }
+  }
+  if (id === 'rule') return { provider: 'rule', model: 'rule-wbs-v1' }
+  return null
+}
+
+/** AI_PROVIDER 로 하나만 쓰도록 정해 두었는지 ('auto' 또는 빈 값이면 null) */
+function forcedProvider(env) {
+  const forced = String(env.AI_PROVIDER || 'auto').trim().toLowerCase()
+  return AI_MODEL_IDS.includes(forced) ? forced : null
+}
+
+/**
+ * 화면에 보여 줄 모델 목록. 키가 없거나 서버 설정으로 막힌 모델은 available: false + 이유.
+ * (키 값·주소는 담지 않는다)
+ */
+export function listAiModels(env = process.env) {
+  const forced = forcedProvider(env)
+  return AI_MODEL_IDS.map((id) => {
+    const cfg = configFor(id, env)
+    let reason
+    if (forced && forced !== id) reason = '서버 설정에서 꺼져 있어요'
+    else if (!cfg) reason = 'API 키가 없어 쓸 수 없어요'
+    return {
+      id,
+      label: MODEL_LABELS[id],
+      model: cfg?.model ?? (id === 'gemini' ? DEFAULT_GEMINI_MODEL : id === 'openai' ? DEFAULT_OPENAI_MODEL : 'rule-wbs-v1'),
+      available: !reason,
+      ...(reason ? { reason } : {}),
+    }
+  })
+}
+
+/** 아무것도 고르지 않았을 때 쓰는 모델 id */
+export function defaultAiModelId(env = process.env) {
+  try {
+    return resolveAiProvider(env).provider
+  } catch {
+    return 'rule'
+  }
+}
+
+/**
+ * 사용자가 고른 모델(id)을 호출 설정으로 바꾼다.
+ * 고르지 않았으면 서버 기본값, 목록에 없거나 쓸 수 없는 모델이면 오류(code: 'MODEL_UNAVAILABLE').
+ */
+export function resolveAiChoice(env = process.env, modelId) {
+  if (modelId === undefined || modelId === null || modelId === '') return resolveAiProvider(env)
+  const entry = listAiModels(env).find((m) => m.id === modelId)
+  if (!entry || !entry.available) {
+    const err = new Error(entry?.reason ? `선택한 모델은 지금 쓸 수 없어요. (${entry.reason})` : '알 수 없는 모델이에요.')
+    err.code = 'MODEL_UNAVAILABLE'
+    throw err
+  }
+  return configFor(modelId, env)
 }
 
 /** AI 에 전달할 시스템·사용자 프롬프트 생성 */
@@ -294,7 +382,8 @@ export function generateRuleBasedTasks(topic, context = '', count = DEFAULT_SUBT
 
 /**
  * 큰 작업/아이디어를 세부 WBS 작업 목록으로 분해한다.
- * @param {{ topic: string, context?: string, count?: number }} input
+ * @param {{ topic: string, context?: string, count?: number, model?: string }} input
+ *   model: 'gemini' | 'openai' | 'rule' (없으면 서버 기본값)
  * @param {{ env?: Record<string, string | undefined>, fetchImpl?: typeof fetch }} [options]
  */
 export async function breakdownTaskWithAi(input, options = {}) {
@@ -308,7 +397,8 @@ export async function breakdownTaskWithAi(input, options = {}) {
     throw new Error('분해할 작업 제목이나 내용을 입력하세요.')
   }
 
-  const resolved = resolveAiProvider(env)
+  // 사용자가 고른 모델 (없으면 서버 기본값). 쓸 수 없는 모델이면 여기서 오류 → 호출하지 않는다
+  const resolved = resolveAiChoice(env, input?.model)
   const ruleResult = (notice) => ({
     provider: 'rule',
     model: 'rule-wbs-v1',

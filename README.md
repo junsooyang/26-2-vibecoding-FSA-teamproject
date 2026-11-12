@@ -83,6 +83,7 @@
 - 툴바 ③ 작업의 **✨ AI 작업 쪼개기**, 또는 WBS 편집 창의 **✨ 하위 작업 쪼개기**로 엽니다. 노드를 선택한 채 열면 그 노드의 내용이 주제로 채워지고, 만든 작업은 **그 노드 아래에 연결**됩니다.
 - 개수(3~7개)와 추가 요청 사항(예: "프론트엔드 위주로")을 넣고 생성하면 **미리보기**가 나옵니다. 제목·체크항목을 고치거나 빼고, 직접 추가한 뒤 **선택한 N개 WBS 작업 추가**를 눌러야 보드에 들어갑니다. 한 번의 `Ctrl+Z`로 모두 되돌립니다.
 - AI는 서버가 대신 부릅니다(**Google Gemini 무료 등급**, 기본 모델 `gemini-3.1-flash-lite`). 키는 서버에만 있고 화면에는 보이지 않습니다.
+- AI 창의 **AI 모델**에서 Google Gemini · OpenAI GPT · 기본 단계 추천(AI 없이) 중 고를 수 있습니다. **서버에 키가 있는 모델만** 고를 수 있고, 키가 없는 모델은 목록에서 고를 수 없게 막혀 있습니다(서버도 거절). 고른 모델은 브라우저에 기억됩니다.
 - AI 키가 없거나, 응답이 20초 넘게 늦거나, 사용량이 몰리거나, 서버 전체 하루 상한(기본 200회)을 넘으면 **기본 단계 추천**(발표·보고서·개발·일반 템플릿)으로 대신 보여 주고 그 이유를 안내합니다. 오류로 막히지 않습니다.
 - 보드 멤버만 쓸 수 있고, 한 사람당 10분에 20회까지입니다. 주제는 500자, 추가 요청은 1000자까지입니다.
 - 입력한 주제는 Google로 보내집니다. 무료 등급은 입력 내용이 Google 서비스 개선에 쓰일 수 있으니 개인정보·민감한 내용은 넣지 마세요.
@@ -255,7 +256,7 @@ npm start            # 포트: PORT 환경변수 (없으면 3001)
 | `WS_MAX_PAYLOAD_MB` | `16` | 실시간 서버가 받는 메시지 하나의 최대 크기(MB). 넘으면 연결을 끊음 |
 | `GEMINI_API_KEY` | (없음 = 기본 단계 추천) | AI 작업 쪼개기용 Gemini 키([AI Studio](https://aistudio.google.com/apikey)에서 무료 발급). **서버 전용** |
 | `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Gemini 모델. `gemini-2.5-flash`는 새 키에서 404가 납니다 |
-| `AI_PROVIDER` | `auto` | `auto`(Gemini → OpenAI → 기본 단계 순) · `gemini` · `openai` · `rule` |
+| `AI_PROVIDER` | `auto` | 기본 모델. `auto`(Gemini → OpenAI → 기본 단계 순) · `gemini` · `openai` · `rule`. `auto`가 아니면 AI 창에서 그 모델만 고를 수 있음 |
 | `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_BASE_URL` | (없음) / `gpt-4o-mini` / OpenAI | OpenAI(또는 호환 API)를 쓸 때. 유료 |
 | `AI_TIMEOUT_MS` | `20000` | 외부 AI 응답 대기 시간. 넘으면 기본 단계 추천으로 대신 |
 | `AI_DAILY_LIMIT` | `200` | 서버 전체 하루 외부 AI 호출 상한(UTC 기준). 무료 한도·비용 보호 |
@@ -404,7 +405,7 @@ npm run test:watch   # 파일을 고칠 때마다 다시 실행
 | `tests/server/migrate.test.ts` | SQLite → Postgres 이전: 모든 표·파일, 번호·한글·바이너리 유지, 이전 뒤 새 번호가 겹치지 않음, 데이터가 있는 DB는 거절, 실패 시 전부 되돌림 |
 | `tests/server/dbConfig.test.ts` | Supabase 접속 주소·SSL 설정, 자리표시자 변환, 로그에 DB 비밀번호 숨김, 한글 보드의 저장 경로 |
 | `tests/build/deployEnv.test.ts` | 배포 빌드 환경변수 검사: 값 없음·https/wss 아님·localhost·잘못된 주소는 막고, 로컬 빌드는 경고만, 서버 비밀 값이 `VITE_`에 있으면 항상 막음 |
-| `tests/server/ai.test.ts` | AI 작업 쪼개기: 프로바이더 선택, 응답 정리, Gemini 키는 헤더로·시간 제한 포함, 실패·시간 초과·하루 상한 시 기본 단계 추천으로 대신, 멤버 전용(401/403/404), 입력 검증 |
+| `tests/server/ai.test.ts` | AI 작업 쪼개기: 프로바이더 선택, 모델 선택(키가 있는 모델만·키 값 미노출·키 없는 모델 요청은 400), 응답 정리, Gemini 키는 헤더로·시간 제한 포함, 실패·시간 초과·하루 상한 시 기본 단계 추천으로 대신, 멤버 전용(401/403/404), 입력 검증 |
 | `tests/server/personalNotes.test.ts` | 개인 노트 여러 개 저장·순서 유지, 예전 한 개짜리 노트 호환(다 지워도 되살아나지 않음), 개수·제목 길이 상한, 잘못된 항목·중복 id 제거, NUL 문자, 다른 팀원에게 안 보임 |
 | `tests/collab/personalNotes.test.ts` | 노트 이름(제목 → 본문 첫 줄 → 제목 없음), 추가·수정·삭제 후 고를 노트, 시각 표시 |
 | `tests/collab/windowLayout.test.ts` | 채팅 창 위치·크기(툴바 위·화면 밖으로 안 나감, 최소·최대 크기, 처음 자리), 저장값 검사, 메모 크기에 맞춘 글자 배율 |

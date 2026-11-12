@@ -1,5 +1,8 @@
-import { useState } from 'react'
-import { api, type AiTaskDraft } from '../api/client'
+import { useEffect, useState } from 'react'
+import { api, type AiModelId, type AiModelOption, type AiTaskDraft } from '../api/client'
+
+/** 마지막으로 고른 모델을 이 브라우저에 기억 */
+const MODEL_STORAGE_KEY = 'ai-model'
 
 export interface EditableSubtask extends AiTaskDraft {
   id: string
@@ -22,7 +25,7 @@ const COUNT_OPTIONS = [3, 4, 5, 6, 7]
 
 const PROVIDER_LABELS: Record<string, string> = {
   gemini: 'Google Gemini',
-  openai: 'OpenAI',
+  openai: 'OpenAI GPT',
   rule: '기본 단계 추천',
 }
 
@@ -158,6 +161,43 @@ export default function AiBreakdownModal({
     notice?: string
   } | null>(null)
   const [drafts, setDrafts] = useState<EditableSubtask[]>([])
+  // 모델 선택: 서버가 알려 준 목록 (키가 없는 모델은 고를 수 없게 표시)
+  const [models, setModels] = useState<AiModelOption[] | null>(null)
+  const [model, setModel] = useState<AiModelId | ''>('')
+
+  useEffect(() => {
+    let alive = true
+    api
+      .aiModels()
+      .then(({ models: list, defaultModel }) => {
+        if (!alive) return
+        setModels(list)
+        const usable = (id: string | null) => list.find((m) => m.id === id && m.available)?.id
+        let saved: string | null = null
+        try {
+          saved = localStorage.getItem(MODEL_STORAGE_KEY)
+        } catch {
+          // 저장소를 못 쓰면 서버 기본값
+        }
+        setModel(usable(saved) ?? usable(defaultModel) ?? list.find((m) => m.available)?.id ?? '')
+      })
+      .catch(() => {
+        // 목록을 못 받으면 선택 칸 없이 서버 기본값으로 생성한다
+        if (alive) setModels([])
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const chooseModel = (id: AiModelId) => {
+    setModel(id)
+    try {
+      localStorage.setItem(MODEL_STORAGE_KEY, id)
+    } catch {
+      // 기억하지 못해도 이번 창에서는 그대로 쓴다
+    }
+  }
 
   const handleGenerate = async (e?: React.FormEvent) => {
     e?.preventDefault()
@@ -173,6 +213,7 @@ export default function AiBreakdownModal({
         topic: clean,
         context: context.trim() || undefined,
         count,
+        ...(model ? { model } : {}),
       })
       setProviderInfo({ provider: res.provider, model: res.model, notice: res.fallback ? res.notice : undefined })
       setDrafts(toEditableList(res.tasks))
@@ -250,6 +291,27 @@ export default function AiBreakdownModal({
               autoFocus
             />
           </label>
+
+          {models && models.length > 0 && (
+            <div className="ai-model-field">
+              <label>
+                AI 모델
+                <select
+                  className="ai-model-select"
+                  value={model}
+                  onChange={(e) => chooseModel(e.target.value as AiModelId)}
+                >
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id} disabled={!m.available}>
+                      {m.available
+                        ? `${m.label}${m.id === 'rule' ? '' : ` · ${m.model}`}`
+                        : `${m.label} — 사용 불가`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
 
           <div className="ai-options-row">
             <label className="ai-context-label">

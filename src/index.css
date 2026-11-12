@@ -4968,3 +4968,29 @@ button.history-item:focus-visible {
     min-height: 0;
   }
 }
+
+/* ---------- AI 창: 모델 선택 ---------- */
+.ai-model-field {
+  margin-bottom: 16px;
+}
+
+.ai-model-field label {
+  margin-bottom: 0;
+}
+
+.ai-model-select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.ai-model-select:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 1px;
+}

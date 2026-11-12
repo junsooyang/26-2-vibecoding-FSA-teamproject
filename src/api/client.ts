@@ -70,6 +70,21 @@ export interface AiTaskDraft {
   checklist: string[]
 }
 
+/** AI 창에서 고를 수 있는 모델 */
+export type AiModelId = 'gemini' | 'openai' | 'rule'
+
+export interface AiModelOption {
+  id: AiModelId
+  /** 화면 이름 (예: Google Gemini) */
+  label: string
+  /** 실제 모델 이름 (예: gemini-3.1-flash-lite) */
+  model: string
+  /** 서버에 키가 있어 지금 쓸 수 있는지 */
+  available: boolean
+  /** 쓸 수 없는 이유 */
+  reason?: string
+}
+
 export interface AiBreakdownResponse {
   provider: 'gemini' | 'openai' | 'rule'
   model: string
@@ -240,9 +255,12 @@ export const api = {
     request<{ ok: true }>('PUT', `/personal/${slug}`, data),
 
   // AI 기반 WBS 세부 작업 분해
+  // AI 창의 모델 선택 목록 (키가 있는 모델만 available)
+  aiModels: () => request<{ models: AiModelOption[]; defaultModel: AiModelId }>('GET', '/ai/models'),
+
   breakdownTasks: (
     slug: string,
-    payload: { topic: string; context?: string; count?: number },
+    payload: { topic: string; context?: string; count?: number; model?: AiModelId },
   ) =>
     request<AiBreakdownResponse>(
       'POST',
