@@ -62,6 +62,43 @@ describe('describeDb', () => {
   })
 })
 
+describe('예전 board.db 자동 업그레이드', () => {
+  it('notes_json 칸이 없는 예전 표에 칸을 붙이고, 기존 데이터는 그대로 둔다', async () => {
+    const fs = nodeRequire('node:fs') as typeof import('node:fs')
+    const os = nodeRequire('node:os') as typeof import('node:os')
+    const path = nodeRequire('node:path') as typeof import('node:path')
+    const { DatabaseSync } = nodeRequire('node:sqlite') as {
+      DatabaseSync: new (f: string) => { exec: (s: string) => void; close: () => void }
+    }
+    const { createDb } = nodeRequire('../../server/db.js') as {
+      createDb: (o: { driver: string; path: string }) => Promise<{
+        get: (s: string, p?: unknown[]) => Promise<Record<string, unknown> | undefined>
+        close: () => Promise<void>
+      }>
+    }
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'old-db-'))
+    const file = path.join(dir, 'old.db')
+    const old = new DatabaseSync(file)
+    old.exec(`CREATE TABLE personal_spaces (
+      user_id INTEGER NOT NULL, room_slug TEXT NOT NULL, note TEXT NOT NULL DEFAULT '',
+      files_json TEXT NOT NULL DEFAULT '[]', updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, room_slug));
+      INSERT INTO personal_spaces VALUES (1, 'b', '예전 메모', '[]', 1);`)
+    old.close()
+
+    const db = await createDb({ driver: 'sqlite', path: file })
+    try {
+      expect(await db.get('SELECT note, notes_json FROM personal_spaces')).toEqual({ note: '예전 메모', notes_json: '[]' })
+    } finally {
+      await db.close()
+      try {
+        fs.rmSync(dir, { recursive: true, force: true })
+      } catch {
+        // 윈도우 파일 잠금
+      }
+    }
+  })
+})
+
 describe('storageFolder', () => {
   it('한글 slug 도 ASCII 폴더 이름으로, 같은 slug 는 늘 같은 폴더', () => {
     const a = storageFolder('한글-보드-ab12cd34')

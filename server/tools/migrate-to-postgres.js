@@ -19,7 +19,7 @@ const TABLES = [
   ['users', ['id', 'username', 'name', 'password_hash', 'created_at']],
   ['rooms', ['id', 'slug', 'name', 'owner_id', 'created_at']],
   ['room_members', ['room_id', 'user_id', 'role', 'joined_at']],
-  ['personal_spaces', ['user_id', 'room_slug', 'note', 'files_json', 'updated_at']],
+  ['personal_spaces', ['user_id', 'room_slug', 'note', 'files_json', 'notes_json', 'updated_at']],
   ['files', ['id', 'room_slug', 'name', 'mime', 'size', 'uploader_id', 'created_at']],
   ['docs', ['name', 'state', 'updated_at']],
 ]

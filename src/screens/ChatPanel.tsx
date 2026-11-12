@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChatMessage } from '../collab/yjs'
+import { defaultChatRect } from '../collab/windowRect'
+import { useFloatingWindow } from './useFloatingWindow'
 
 interface Props {
   /** 방 이름(헤더 표시용) */
@@ -16,6 +18,8 @@ interface Props {
   onEdit: (id: string, text: string) => void
   onDelete: (id: string) => void
   onClose: () => void
+  /** 창 머리가 올라갈 수 있는 가장 위 (툴바 높이). 툴바를 가리지 않게 한다 */
+  topLimit?: number
 }
 
 function formatTime(ms: number) {
@@ -24,7 +28,10 @@ function formatTime(ms: number) {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-/** 방에 들어온 참여자들끼리 자유롭게 대화하는 실시간 채팅 패널 (우측 사이드) */
+/**
+ * 방에 들어온 참여자들끼리 자유롭게 대화하는 실시간 채팅 창.
+ * 오른쪽 패널(캘린더·대시보드 등)과 함께 볼 수 있도록 화면 위에 따로 떠 있고, 끌어서 옮길 수 있다.
+ */
 export default function ChatPanel({
   roomName,
   messages,
@@ -35,12 +42,20 @@ export default function ChatPanel({
   onEdit,
   onDelete,
   onClose,
+  topLimit = 56,
 }: Props) {
   const [text, setText] = useState('')
   // 수정 중인 메시지 id 와 입력값
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
+
+  // 떠 있는 작은 창: 머리를 끌어 옮기고 오른쪽 아래 모서리로 크기 조절 (위치는 이 브라우저에 저장)
+  const makeDefault = useCallback(
+    () => defaultChatRect({ width: window.innerWidth, height: window.innerHeight }, topLimit + 52),
+    [topLimit],
+  )
+  const floating = useFloatingWindow('chat-window-rect', makeDefault, topLimit)
 
   // 새 메시지가 오면 맨 아래로 스크롤
   useEffect(() => {
@@ -70,8 +85,25 @@ export default function ChatPanel({
   }
 
   return (
-    <aside className="side-panel chat-panel" onClick={(e) => e.stopPropagation()}>
-      <div className="side-head">
+    <section
+      ref={(el) => {
+        floating.elRef.current = el
+      }}
+      className={floating.dragging ? 'chat-window dragging' : 'chat-window'}
+      style={floating.style}
+      role="dialog"
+      aria-label="채팅"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && !editingId) onClose()
+      }}
+    >
+      <div
+        className="side-head chat-window-head"
+        onPointerDown={floating.onHeaderPointerDown}
+        onDoubleClick={floating.reset}
+        title={floating.narrow ? undefined : '끌어서 옮기기 · 더블클릭하면 처음 자리로'}
+      >
         <div>
           <h3>💬 채팅</h3>
           <p className="side-sub">
@@ -179,6 +211,6 @@ export default function ChatPanel({
           보내기
         </button>
       </form>
-    </aside>
+    </section>
   )
 }

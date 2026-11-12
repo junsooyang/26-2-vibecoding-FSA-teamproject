@@ -3,6 +3,7 @@ import type { StickyColor, StickyNodeData } from '../collab/yjs'
 import { useCurrentUsername } from './CurrentUserContext'
 import { NODE_COLLAPSE_EVENT, NODE_RESIZE_EVENT, PROMOTE_WBS_EVENT, STICKY_COLOR_EVENT } from './nodeEvents'
 import NodeHandles from './NodeHandles'
+import { STICKY_MIN_SIZE, stickyFontScale } from './stickyLayout'
 import VoteButton from './VoteButton'
 import CommentButton from './CommentButton'
 
@@ -25,7 +26,7 @@ const LONG_TEXT = 40
  * - 모서리를 끌어 크기 조절(공유 저장)
  * - 내용이 길면 접기/펼치기
  */
-export default function StickyNode({ id, data, selected }: NodeProps) {
+export default function StickyNode({ id, data, selected, width: liveWidth, height: liveHeight }: NodeProps) {
   const d = data as StickyNodeData & { seq?: number; w?: number; h?: number; collapsed?: boolean }
   const me = useCurrentUsername()
   const palette = STICKY_COLORS[d.color] ?? STICKY_COLORS.yellow
@@ -50,20 +51,30 @@ export default function StickyNode({ id, data, selected }: NodeProps) {
     window.dispatchEvent(new CustomEvent(NODE_COLLAPSE_EVENT, { detail: { id } }))
   }
 
-  // 사용자가 지정한 크기가 있으면 적용 (없으면 CSS 기본)
+  // 크기: 끄는 중이면 React Flow 가 알려 주는 실시간 크기, 아니면 공유 저장된 크기 (없으면 CSS 기본)
+  const width = liveWidth && liveWidth > 0 ? liveWidth : d.w
+  const height = collapsed ? undefined : liveHeight && liveHeight > 0 ? liveHeight : d.h
+  // 메모 크기에 맞춰 글자·버튼 크기를 함께 줄이고 키운다 (줄여도 잘리지 않게)
+  const scale = stickyFontScale(width, height)
   const sizeStyle: React.CSSProperties = {
     background: palette.bg,
     borderColor: palette.border,
-    ...(d.w ? { width: d.w } : {}),
-    ...(d.h && !collapsed ? { height: d.h } : {}),
+    fontSize: `${13 * scale}px`,
+    ...(width ? { width } : {}),
+    ...(height ? { height } : {}),
   }
 
   return (
-    <div className={selected ? 'sticky-node selected' : 'sticky-node'} style={sizeStyle}>
+    <div
+      className={[selected ? 'sticky-node selected' : 'sticky-node', height ? 'sized' : '']
+        .filter(Boolean)
+        .join(' ')}
+      style={sizeStyle}
+    >
       <NodeResizer
         isVisible={selected}
-        minWidth={140}
-        minHeight={90}
+        minWidth={STICKY_MIN_SIZE.width}
+        minHeight={STICKY_MIN_SIZE.height}
         onResizeEnd={(_e, params) => {
           window.dispatchEvent(
             new CustomEvent(NODE_RESIZE_EVENT, {
@@ -89,7 +100,8 @@ export default function StickyNode({ id, data, selected }: NodeProps) {
 
       {d.title && <div className="sticky-title">{d.title}</div>}
 
-      <div className={collapsed ? 'sticky-text clamped' : 'sticky-text'}>
+      {/* 크기를 줄여 글이 넘치면 이 칸 안에서만 스크롤 (nowheel: 스크롤할 때 캔버스가 확대되지 않게) */}
+      <div className={collapsed ? 'sticky-text clamped' : 'sticky-text nowheel'}>
         {text || '(빈 메모 — 더블클릭해서 입력)'}
       </div>
 

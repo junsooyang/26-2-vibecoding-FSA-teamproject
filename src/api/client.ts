@@ -48,9 +48,20 @@ export interface PersonalFile {
   size: number
 }
 
+/** 개인 노트 하나 (제목 + 본문) */
+export interface PersonalNote {
+  id: string
+  title: string
+  text: string
+  updatedAt: number
+}
+
 export interface PersonalSpace {
-  note: string
+  /** 여러 개의 개인 노트 */
+  notes: PersonalNote[]
   files: PersonalFile[]
+  /** 예전 한 개짜리 노트 (서버가 notes 로 바꿔 주므로 읽기 전용) */
+  note?: string
 }
 
 export function getToken(): string | null {

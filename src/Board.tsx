@@ -93,6 +93,9 @@ const EDGE_WIDTHS: { label: string; value: number }[] = [
 const FILTER_MINE = '__mine__'
 const FILTER_UNASSIGNED = '__unassigned__'
 
+/** 오른쪽에 뜨는 패널 (한 번에 하나만 열린다) */
+type RightPanel = 'dashboard' | 'poll' | 'calendar' | 'history' | 'comments'
+
 /** 두 노드가 화면상에서 겹치는지 판정 (중심점이 대상 노드 박스 안에 있는지) */
 function overlaps(a: BoardNode, b: BoardNode): boolean {
   const aw = a.measured?.width ?? 200
@@ -217,18 +220,32 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   }, [peersOpen])
   // 연결선 스타일 설정 팝오버 열림 여부 (값은 공유 edgeStyle 사용)
   const [showEdgeStyle, setShowEdgeStyle] = useState(false)
-  // 대시보드 패널 열림 여부
-  const [showDashboard, setShowDashboard] = useState(false)
-  // 투표 패널 열림 여부
-  const [showPoll, setShowPoll] = useState(false)
-  // 채팅 패널 열림 여부
+  // 오른쪽 패널(대시보드·투표·캘린더·변경 기록·댓글)은 한 번에 하나만 연다.
+  // 다른 패널을 열면 앞의 패널은 저절로 닫힌다. (채팅은 따로 떠 있는 작은 창이라 함께 열 수 있다)
+  const [rightPanel, setRightPanel] = useState<RightPanel | null>(null)
+  const openPanel = useCallback((p: RightPanel) => {
+    setRightPanel(p)
+    if (p !== 'comments') setCommentNodeId(null)
+  }, [])
+  const togglePanel = useCallback(
+    (p: RightPanel) => {
+      if (rightPanel === p) setRightPanel(null)
+      else openPanel(p)
+    },
+    [rightPanel, openPanel],
+  )
+  const closePanel = useCallback((p: RightPanel) => {
+    setRightPanel((cur) => (cur === p ? null : cur))
+    if (p === 'comments') setCommentNodeId(null)
+  }, [])
+  const showDashboard = rightPanel === 'dashboard'
+  const showPoll = rightPanel === 'poll'
+  const showCalendar = rightPanel === 'calendar'
+  const showHistory = rightPanel === 'history'
+  // 채팅 창 열림 여부 (화면 위에 떠 있는 작은 창 — 오른쪽 패널과 동시에 열 수 있음)
   const [showChat, setShowChat] = useState(false)
-  // 캘린더 패널 열림 여부
-  const [showCalendar, setShowCalendar] = useState(false)
   // 간트차트 열림 여부
   const [showGantt, setShowGantt] = useState(false)
-  // 변경 기록 패널 열림 여부
-  const [showHistory, setShowHistory] = useState(false)
   // 부가 기능(사진/정렬/개인공간 등) 더보기 펼침 여부
   const [showMore, setShowMore] = useState(false)
   // 공유(이미지/PDF 저장) 메뉴 펼침 여부
@@ -390,7 +407,10 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     }
     const onComment = (e: Event) => {
       const id = (e as CustomEvent<{ id: string }>).detail?.id
-      if (id) setCommentNodeId(id)
+      if (id) {
+        setCommentNodeId(id)
+        setRightPanel('comments')
+      }
     }
     const onPromote = (e: Event) => {
       const id = (e as CustomEvent<{ id: string }>).detail?.id
@@ -589,8 +609,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const commentNode = commentNodeId ? nodes.find((n) => n.id === commentNodeId) : undefined
   const commentList = (commentNode?.data as { comments?: Comment[] } | undefined)?.comments ?? []
   useEffect(() => {
-    if (commentNodeId && !commentNode) setCommentNodeId(null)
-  }, [commentNodeId, commentNode])
+    if (commentNodeId && !commentNode) closePanel('comments')
+  }, [commentNodeId, commentNode, closePanel])
 
   /**
    * 새 노드를 놓을 자리: 화면 가운데를 기준으로, 다른 노드와 겹치지 않는 가장 가까운 빈자리.
@@ -1083,20 +1103,20 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           </button>
           {showMore && (
             <span className="more-items">
-              <button onClick={() => setShowDashboard(true)} title="팀원별 현황 / 전체 진행률">
+              <button onClick={() => togglePanel('dashboard')} title="팀원별 현황 / 전체 진행률">
                 📊 대시보드
               </button>
               <button onClick={() => setShowGantt(true)} title="WBS 작업을 시작일~마감일 막대로 보기">
                 📈 간트차트
               </button>
               <button
-                onClick={() => setShowHistory((v) => !v)}
+                onClick={() => togglePanel('history')}
                 title="누가 무엇을 바꿨는지 + 팀원별 기여도"
               >
                 🕘 변경 기록
               </button>
               <button
-                onClick={() => setShowCalendar((v) => !v)}
+                onClick={() => togglePanel('calendar')}
                 title="팀 일정 캘린더 (날짜별 일정 추가/체크)"
               >
                 🗓️ 캘린더
@@ -1104,7 +1124,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
                   ? ` (${calendar.length + wbsDeadlines.length + pollDeadlines.length})`
                   : ''}
               </button>
-              <button onClick={() => setShowPoll(true)} title="질문/선택지로 팀 투표 진행">
+              <button onClick={() => togglePanel('poll')} title="질문/선택지로 팀 투표 진행">
                 🗳️ 투표
                 {polls.some((p) => p && !p.closed && (p.deadline === 0 || Date.now() < p.deadline))
                   ? ' •'
@@ -1194,10 +1214,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         className={[
           'chat-fab',
           showChat ? 'active' : '',
-          // 우측 사이드 패널(채팅/캘린더/대시보드/투표/댓글)이 열려 있으면 가리지 않게 왼쪽으로 비켜남
-          showChat || showCalendar || showDashboard || showPoll || showHistory || commentNodeId
-            ? 'shifted'
-            : '',
+          // 오른쪽 패널(캘린더/대시보드/투표/변경 기록/댓글)이 열려 있으면 가리지 않게 왼쪽으로 비켜남
+          rightPanel ? 'shifted' : '',
         ]
           .filter(Boolean)
           .join(' ')}
@@ -1323,11 +1341,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           entries={activity}
           existingNodeIds={existingNodeIds}
           onFocusNode={focusNode}
-          onOpenCalendar={() => {
-            setShowHistory(false)
-            setShowCalendar(true)
-          }}
-          onClose={() => setShowHistory(false)}
+          onOpenCalendar={() => openPanel('calendar')}
+          onClose={() => closePanel('history')}
         />
       )}
 
@@ -1351,7 +1366,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           }}
           onOpenCalendar={() => {
             setDeadlineAlert(null)
-            setShowCalendar(true)
+            openPanel('calendar')
           }}
           onClose={() => setDeadlineAlert(null)}
         />
@@ -1375,7 +1390,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       />
 
       {showDashboard && (
-        <DashboardPanel tasks={wbsTasks} onClose={() => setShowDashboard(false)} />
+        <DashboardPanel tasks={wbsTasks} onClose={() => closePanel('dashboard')} />
       )}
 
       {showPoll && (
@@ -1386,7 +1401,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           onVote={(pollId, optId) => votePoll(pollId, optId, username)}
           onCloseVote={(pollId) => closePoll(pollId)}
           onClear={(pollId) => clearPoll(pollId)}
-          onDismiss={() => setShowPoll(false)}
+          onDismiss={() => closePanel('poll')}
         />
       )}
 
@@ -1401,6 +1416,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           onEdit={(id, text) => editChatMessage(id, text)}
           onDelete={(id) => deleteChatMessage(id)}
           onClose={() => setShowChat(false)}
+          topLimit={toolbarH + 4}
         />
       )}
 
@@ -1411,20 +1427,17 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           deadlines={wbsDeadlines}
           onToggleDeadline={(nodeId) => toggleWbsDone(nodeId)}
           pollDeadlines={pollDeadlines}
-          onOpenPoll={() => {
-            setShowCalendar(false)
-            setShowPoll(true)
-          }}
+          onOpenPoll={() => openPanel('poll')}
           memberNames={memberNames}
           onAdd={(date, text, extra) => addCalendarEvent(date, text, username, extra)}
           onToggle={(id) => toggleCalendarEvent(id)}
           onEdit={(id, patch) => editCalendarEvent(id, patch)}
           onDelete={(id) => deleteCalendarEvent(id)}
-          onClose={() => setShowCalendar(false)}
+          onClose={() => closePanel('calendar')}
         />
       )}
 
-      {commentNode && commentNodeId && (
+      {rightPanel === 'comments' && commentNode && commentNodeId && (
         <CommentsPanel
           nodeTitle={nodeTitleOf(commentNode)}
           comments={commentList}
@@ -1434,7 +1447,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           }
           onEdit={(cid, text) => editComment(commentNodeId, cid, text)}
           onDelete={(cid) => deleteComment(commentNodeId, cid)}
-          onClose={() => setCommentNodeId(null)}
+          onClose={() => closePanel('comments')}
         />
       )}
 

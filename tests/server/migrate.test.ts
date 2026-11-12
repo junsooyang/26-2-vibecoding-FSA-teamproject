@@ -47,7 +47,10 @@ beforeAll(async () => {
   await source.run("INSERT INTO rooms (id, slug, name, owner_id, created_at) VALUES (3, '보드-abc', '보드', 5, 3)")
   await source.run("INSERT INTO room_members VALUES (3, 5, 'owner', 3)")
   await source.run("INSERT INTO room_members VALUES (3, 9, 'member', 4)")
-  await source.run('INSERT INTO personal_spaces VALUES (9, ?, ?, ?, 5)', ['보드-abc', '메모\u0000', '[]'])
+  await source.run(
+    'INSERT INTO personal_spaces (user_id, room_slug, note, files_json, notes_json, updated_at) VALUES (9, ?, ?, ?, ?, 5)',
+    ['보드-abc', '메모\u0000', '[]', JSON.stringify([{ id: 'n1', title: '제목\u0000', text: '본문', updatedAt: 1 }])],
+  )
   const fileId = '11111111-1111-4111-8111-111111111111'
   await source.run('INSERT INTO files VALUES (?, ?, ?, ?, ?, ?, ?)', [fileId, '보드-abc', 'a.png', 'image/png', 3, 5, 6])
   await source.run('INSERT INTO files VALUES (?, ?, ?, ?, ?, ?, ?)', [
@@ -90,6 +93,8 @@ describe('migrate (SQLite → Postgres)', () => {
     const doc = await target.get('SELECT state FROM docs WHERE name = ?', ['보드-abc'])
     expect([...(doc!.state as Uint8Array)]).toEqual([1, 2, 3, 250])
     expect((await target.get('SELECT note FROM personal_spaces'))!.note).toBe('메모')
+    const notes = JSON.parse(String((await target.get('SELECT notes_json FROM personal_spaces'))!.notes_json))
+    expect(notes[0].text).toBe('본문')
   })
 
   it('옮긴 뒤 새로 가입한 사용자는 기존 번호와 겹치지 않는다', async () => {

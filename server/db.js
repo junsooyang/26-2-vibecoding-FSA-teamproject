@@ -55,6 +55,7 @@ const SQLITE_SCHEMA = `
     note       TEXT NOT NULL DEFAULT '',
     files_json TEXT NOT NULL DEFAULT '[]',
     updated_at INTEGER NOT NULL,
+    notes_json TEXT NOT NULL DEFAULT '[]',
     PRIMARY KEY (user_id, room_slug),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
@@ -108,8 +109,11 @@ const PG_SCHEMA = `
     note       TEXT NOT NULL DEFAULT '',
     files_json TEXT NOT NULL DEFAULT '[]',
     updated_at BIGINT NOT NULL,
+    notes_json TEXT NOT NULL DEFAULT '[]',
     PRIMARY KEY (user_id, room_slug)
   );
+  -- 예전에 만든 표에는 여러 개의 개인 노트(notes_json) 칸이 없으므로 붙인다
+  ALTER TABLE personal_spaces ADD COLUMN IF NOT EXISTS notes_json TEXT NOT NULL DEFAULT '[]';
   CREATE TABLE IF NOT EXISTS files (
     id          TEXT PRIMARY KEY,
     room_slug   TEXT NOT NULL,
@@ -158,6 +162,11 @@ async function createSqliteDb(file) {
   // 개발 중에는 API·실시간 서버가 따로 떠서 같은 파일을 쓸 수 있으므로 잠금 대기 시간을 둔다.
   conn.exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
   conn.exec(SQLITE_SCHEMA)
+  // 예전 board.db 에는 여러 개의 개인 노트(notes_json) 칸이 없으므로 붙인다 (SQLite 는 IF NOT EXISTS 미지원)
+  const personalCols = conn.prepare('PRAGMA table_info(personal_spaces)').all()
+  if (!personalCols.some((c) => c.name === 'notes_json')) {
+    conn.exec("ALTER TABLE personal_spaces ADD COLUMN notes_json TEXT NOT NULL DEFAULT '[]'")
+  }
 
   const cache = new Map()
   const stmt = (sql) => {
