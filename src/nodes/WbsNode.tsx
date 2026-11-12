@@ -11,6 +11,8 @@ import { dueBadge, dueState } from '../collab/wbsUtils'
 import NodeHandles from './NodeHandles'
 import VoteButton from './VoteButton'
 import CommentButton from './CommentButton'
+import DeleteNodeButton from './DeleteNodeButton'
+import { useOverflowing } from './useOverflowing'
 
 // 기존 import 경로 호환을 위해 재노출
 export { WBS_TOGGLE_DONE_EVENT }
@@ -27,9 +29,10 @@ export const WBS_STATUS: Record<WbsStatus, { label: string; color: string; bg: s
  * 작업명 + 담당자 + 상태 배지 + 진행률 바를 표시한다.
  * 상/하 핸들로 트리(부모-자식) 연결이 가능하다.
  */
-export default function WbsNode({ id, data, selected }: NodeProps) {
+export default function WbsNode({ id, data, selected, width: liveWidth, height: liveHeight }: NodeProps) {
   const d = data as {
     label: string
+    description?: string
     assignee: string
     status: WbsStatus
     progress: number
@@ -56,6 +59,9 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
   const checklistDone = checklist.filter((c) => c.done).length
   const attachmentCount = d.attachments?.length ?? 0
   const voted = !!me && (d.votes?.includes(me) ?? false)
+  const description = (d.description ?? '').trim()
+  // 가운데 내용 칸이 넘칠 때만 휠을 노드 안 스크롤에 쓴다 (안 넘치면 휠로 보드가 움직인다)
+  const { ref: bodyRef, overflowing } = useOverflowing<HTMLDivElement>()
 
   // 체크박스 토글 -> Board 에 알림(이벤트). 노드 더블클릭 편집과 섞이지 않게 버블링 중단.
   const onToggle = (e: React.MouseEvent | React.ChangeEvent) => {
@@ -74,14 +80,23 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
     window.dispatchEvent(new CustomEvent(NODE_COLLAPSE_EVENT, { detail: { id } }))
   }
 
+  // 크기: 끄는 중이면 React Flow 가 알려 주는 실시간 크기, 아니면 공유 저장된 크기 (없으면 CSS 기본)
+  const width = liveWidth && liveWidth > 0 ? liveWidth : d.w
+  const height = liveHeight && liveHeight > 0 ? liveHeight : d.h
   const sizeStyle: React.CSSProperties = {
     borderColor: status.color,
-    ...(d.w ? { width: d.w } : {}),
-    ...(d.h ? { minHeight: d.h } : {}),
+    ...(width ? { width } : {}),
+    // 높이를 정하면 그 높이에 고정하고, 넘치는 내용은 가운데 칸에서 스크롤
+    ...(height ? { height } : {}),
   }
 
   return (
-    <div className={selected ? 'wbs-node selected' : 'wbs-node'} style={sizeStyle}>
+    <div
+      className={[selected ? 'wbs-node selected' : 'wbs-node', height ? 'sized' : '']
+        .filter(Boolean)
+        .join(' ')}
+      style={sizeStyle}
+    >
       <NodeResizer
         isVisible={selected}
         minWidth={180}
@@ -106,61 +121,68 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
         </span>
       </div>
 
-      <div
-        className={`wbs-title${done ? ' done' : ''}${collapsed ? ' clamped' : ''}`}
-      >
-        {label || '(제목 없음)'}
-      </div>
-      {isLong && (
-        <button type="button" className="collapse-toggle" onClick={onToggleCollapse}>
-          {collapsed ? '⌄ 펼치기' : '⌃ 접기'}
-        </button>
-      )}
-
-      <div className="wbs-meta">
-        <span className="wbs-assignee">{d.assignee ? `👤 ${d.assignee}` : '담당자 미지정'}</span>
-        <span className="wbs-percent">{progress}%</span>
-      </div>
-
-      {d.due && (
-        <div className={`wbs-due ${dstate}`}>
-          📅 {dueBadge(d.due, done)}
+      {/* 가운데 내용: 높이를 정했거나 내용이 길면 이 칸 안에서만 스크롤 */}
+      <div ref={bodyRef} className={overflowing ? 'wbs-body nowheel' : 'wbs-body'}>
+        <div className={`wbs-title${done ? ' done' : ''}${collapsed ? ' clamped' : ''}`}>
+          {label || '(제목 없음)'}
         </div>
-      )}
+        {isLong && (
+          <button type="button" className="collapse-toggle" onClick={onToggleCollapse}>
+            {collapsed ? '⌄ 펼치기' : '⌃ 접기'}
+          </button>
+        )}
 
-      <div className="wbs-progress">
-        <div
-          className="wbs-progress-fill"
-          style={{ width: `${progress}%`, background: status.color }}
-        />
-      </div>
+        {/* 작업 내용 (메모처럼 여러 줄) */}
+        {description && <div className="wbs-desc">{description}</div>}
 
-      {checklist.length > 0 && (
-        <div className="wbs-node-checklist">
-          <div className="wbs-checklist-count" title={`세부 항목 ${checklistDone}/${checklist.length} 완료`}>
-            ✅ 세부 항목 {checklistDone}/{checklist.length}
+        {d.due && <div className={`wbs-due ${dstate}`}>📅 {dueBadge(d.due, done)}</div>}
+
+        {checklist.length > 0 && (
+          <div className="wbs-node-checklist">
+            <div
+              className="wbs-checklist-count"
+              title={`세부 항목 ${checklistDone}/${checklist.length} 완료`}
+            >
+              ✅ 세부 항목 {checklistDone}/{checklist.length}
+            </div>
+            <ul className="wbs-check-items">
+              {checklist.map((item) => (
+                <li key={item.id} className={item.done ? 'wbs-check-item done' : 'wbs-check-item'}>
+                  <label
+                    className="nodrag"
+                    onClick={(e) => onToggleItem(e, item.id)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={item.done}
+                      onChange={(e) => onToggleItem(e, item.id)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <span>{item.text}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul className="wbs-check-items">
-            {checklist.map((item) => (
-              <li key={item.id} className={item.done ? 'wbs-check-item done' : 'wbs-check-item'}>
-                <label
-                  className="nodrag"
-                  onClick={(e) => onToggleItem(e, item.id)}
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  <input
-                    type="checkbox"
-                    checked={item.done}
-                    onChange={(e) => onToggleItem(e, item.id)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <span>{item.text}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
+        )}
+      </div>
+
+      {/* 담당자·진행률은 크기를 줄여도 항상 보이게 스크롤 칸 밖에 둔다 */}
+      <div className="wbs-fixed">
+        <div className="wbs-meta">
+          <span className="wbs-assignee" title={d.assignee || undefined}>
+            {d.assignee ? `👤 ${d.assignee}` : '담당자 미지정'}
+          </span>
+          <span className="wbs-percent">{progress}%</span>
         </div>
-      )}
+        <div className="wbs-progress">
+          <div
+            className="wbs-progress-fill"
+            style={{ width: `${progress}%`, background: status.color }}
+          />
+        </div>
+      </div>
 
       <div className="wbs-foot">
         {attachmentCount > 0 && (
@@ -170,6 +192,7 @@ export default function WbsNode({ id, data, selected }: NodeProps) {
         )}
         <VoteButton nodeId={id} votes={d.votes} voted={voted} />
         <CommentButton nodeId={id} count={d.comments?.length ?? 0} />
+        <DeleteNodeButton nodeId={id} />
       </div>
 
     </div>

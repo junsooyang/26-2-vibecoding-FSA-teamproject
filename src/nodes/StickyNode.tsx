@@ -6,6 +6,8 @@ import NodeHandles from './NodeHandles'
 import { STICKY_MIN_SIZE, stickyFontScale } from './stickyLayout'
 import VoteButton from './VoteButton'
 import CommentButton from './CommentButton'
+import DeleteNodeButton from './DeleteNodeButton'
+import { useOverflowing } from './useOverflowing'
 
 /** 스티커 색상 팔레트 (배경 / 테두리) */
 export const STICKY_COLORS: Record<StickyColor, { bg: string; border: string }> = {
@@ -35,6 +37,8 @@ export default function StickyNode({ id, data, selected, width: liveWidth, heigh
   const isLong = text.length > LONG_TEXT
   // 명시적 설정이 있으면 그 값, 없으면 긴 글은 기본 접힘(…)
   const collapsed = d.collapsed ?? isLong
+  // 제목+본문 칸이 넘칠 때만 휠을 메모 안 스크롤에 쓴다 (안 넘치면 휠로 보드가 움직인다)
+  const { ref: bodyRef, overflowing } = useOverflowing<HTMLDivElement>()
 
   const pickColor = (e: React.MouseEvent, color: StickyColor) => {
     e.stopPropagation()
@@ -98,11 +102,12 @@ export default function StickyNode({ id, data, selected, width: liveWidth, heigh
         {d.seq != null && <span className="node-seq" title="생성 순서">#{d.seq}</span>}
       </div>
 
-      {d.title && <div className="sticky-title">{d.title}</div>}
-
-      {/* 크기를 줄여 글이 넘치면 이 칸 안에서만 스크롤 (nowheel: 스크롤할 때 캔버스가 확대되지 않게) */}
-      <div className={collapsed ? 'sticky-text clamped' : 'sticky-text nowheel'}>
-        {text || '(빈 메모 — 더블클릭해서 입력)'}
+      {/* 제목+본문: 글이 넘치면 이 칸 안에서만 스크롤 (nowheel: 스크롤할 때 보드가 같이 움직이지 않게) */}
+      <div ref={bodyRef} className={overflowing ? 'sticky-body nowheel' : 'sticky-body'}>
+        {d.title && <div className="sticky-title">{d.title}</div>}
+        <div className={collapsed ? 'sticky-text clamped' : 'sticky-text'}>
+          {text || '(빈 메모 — 더블클릭해서 입력)'}
+        </div>
       </div>
 
       {isLong && (
@@ -117,6 +122,7 @@ export default function StickyNode({ id, data, selected, width: liveWidth, heigh
         </button>
         <VoteButton nodeId={id} votes={d.votes} voted={voted} />
         <CommentButton nodeId={id} count={d.comments?.length ?? 0} />
+        <DeleteNodeButton nodeId={id} />
       </div>
     </div>
   )

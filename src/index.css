@@ -372,6 +372,9 @@ button.ghost {
   display: grid;
   place-items: center;
   z-index: 100;
+  /* 화면을 확대해도 창 가장자리가 화면에 붙지 않게 여백 */
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 .panel {
@@ -381,6 +384,12 @@ button.ghost {
   border-radius: 14px;
   padding: 24px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+  box-sizing: border-box;
+  /* 화면보다 길면(브라우저 확대·작은 화면) 창 안에서 스크롤 → 아래쪽이 잘리지 않는다 */
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .panel-head {
@@ -1119,7 +1128,7 @@ button.danger:hover {
   opacity: 0.7;
 }
 
-/* 본인 메시지 수정/삭제 — 평소 숨김, 말풍선에 호버하면 표시 */
+/* 메시지 답장(모두) · 수정/삭제(본인) — 평소 숨김, 말풍선에 호버하거나 키보드로 들어오면 표시 */
 .chat-msg-actions {
   display: none;
   gap: 8px;
@@ -1127,8 +1136,16 @@ button.danger:hover {
   flex-shrink: 0;
 }
 
-.chat-row.mine:hover .chat-msg-actions {
+.chat-row:hover .chat-msg-actions,
+.chat-row:focus-within .chat-msg-actions {
   display: inline-flex;
+}
+
+/* 터치 화면(호버 없음): 항상 표시 */
+@media (hover: none) {
+  .chat-msg-actions {
+    display: inline-flex;
+  }
 }
 
 .chat-link {
@@ -1752,10 +1769,21 @@ button.cal-event.poll:focus-visible {
   margin-left: auto;
 }
 
+/* 더보기: 눈에 잘 띄도록 남색 바탕 + 진한 글자 */
 .ghost-toggle {
-  background: #fff;
-  border: 1px dashed #c7cbd1 !important;
-  color: #6b7280;
+  background: #eef2ff !important;
+  border: 1px solid #6366f1 !important;
+  color: #4338ca !important;
+  font-weight: 700;
+}
+
+.ghost-toggle:hover {
+  background: #e0e7ff !important;
+}
+
+.ghost-toggle:focus-visible {
+  outline: 2px solid #4338ca;
+  outline-offset: 2px;
 }
 
 .more-items {
@@ -4080,12 +4108,161 @@ button.history-item:focus-visible {
   min-height: 0;
 }
 
-.sticky-node.sized .sticky-text:not(.clamped) {
+/* 제목+본문 칸: 남은 공간을 쓰고, 넘치면 그 안에서 스크롤 */
+.sticky-node .sticky-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45em;
   flex: 1 1 auto;
   min-height: 1.4em;
+  /* 크기를 정하지 않은 메모도 너무 길어지면 스크롤 */
+  max-height: 22em;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
+}
+
+.sticky-node.sized .sticky-body {
+  max-height: none;
+}
+
+/* 본문은 줄어들지 않고 칸 안에서 스크롤된다 */
+.sticky-node .sticky-body .sticky-text {
+  flex: 0 0 auto;
+}
+
+.sticky-node .sticky-body .sticky-title {
+  margin-bottom: 0;
+}
+
+.sticky-node .node-delete-btn {
+  font-size: 0.88em;
+  padding: 0.15em 0.55em;
+}
+
+/* ======================================================================
+   WBS 노드: 머리(상태)와 아래 버튼 줄은 고정, 가운데 내용만 스크롤
+   ====================================================================== */
+.wbs-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.wbs-node .wbs-head,
+.wbs-node .wbs-fixed,
+.wbs-node .wbs-foot {
+  flex-shrink: 0;
+}
+
+/* 담당자·진행률 줄: 스크롤 칸 아래에 고정 */
+.wbs-fixed {
+  padding-top: 6px;
+}
+
+.wbs-fixed .wbs-meta {
+  gap: 6px;
+}
+
+/* 담당자 이름이 길면 한 줄에서 … 처리 (마우스를 올리면 전체 이름) */
+.wbs-fixed .wbs-assignee {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wbs-fixed .wbs-percent {
+  flex-shrink: 0;
+}
+
+.wbs-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* 크기를 정하지 않은 작업도 너무 길어지면 스크롤 */
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.wbs-node.sized .wbs-body {
+  max-height: none;
+}
+
+/* 작업 내용 (여러 줄) */
+.wbs-desc {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  background: #f9fafb;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #374151;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 편집 패널의 작업내용 입력 칸 */
+.wbs-form textarea.wbs-desc-input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  min-height: 84px;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 400;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+/* 삭제 버튼은 아래 줄의 오른쪽 끝 */
+.wbs-foot .node-delete-btn {
+  margin-left: auto;
+}
+
+/* ---------- 노드 공용 삭제 버튼 (오른쪽 아래) ---------- */
+.node-delete-btn {
+  border: 1px solid #fca5a5;
+  background: #fff;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #dc2626;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.node-delete-btn:hover {
+  background: #fef2f2;
+  border-color: #dc2626;
+}
+
+.node-delete-btn:focus-visible {
+  outline: 2px solid #dc2626;
+  outline-offset: 2px;
+}
+
+/* 사진: 사진 위 오른쪽 아래에 겹쳐 표시 */
+.image-node {
+  position: relative;
+}
+
+.node-delete-btn.image-delete {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  opacity: 0.85;
+}
+
+.node-delete-btn.image-delete:hover,
+.node-delete-btn.image-delete:focus-visible {
+  opacity: 1;
 }
 
 /* ======================================================================
@@ -4314,4 +4491,253 @@ button.history-item:focus-visible {
   justify-content: space-between;
   gap: 8px;
   margin-top: 12px;
+}
+
+/* WBS 편집 창: 내용을 아래로 스크롤해도 제목·닫기 줄은 위에 붙어 있게 */
+.wbs-edit-panel .panel-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fff;
+  padding: 4px 0 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #f1f2f4;
+}
+
+/* 좁은 창: 머리 버튼이 넘치면 다음 줄로 */
+.wbs-edit-panel .panel-head {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wbs-edit-panel .panel-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* 좁은 창: 시작일·마감일이 나란히 안 들어가면 위아래로 */
+.wbs-edit-panel .wbs-date-row {
+  flex-wrap: wrap;
+}
+
+.wbs-edit-panel .wbs-date-row label {
+  flex: 1 1 140px;
+}
+
+/* ======================================================================
+   채팅: 날짜 구분선 · 검색 · 답장
+   ====================================================================== */
+/* 하루가 지나 새 대화가 오면 가운데에 날짜 표시 */
+.chat-date-divider {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0;
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chat-date-divider::before,
+.chat-date-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #dfe2e7;
+}
+
+.chat-date-divider span {
+  padding: 3px 10px;
+  background: #e9ebef;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* 머리 버튼 묶음 */
+.chat-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.chat-search-toggle.active {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+/* 검색 입력 줄 */
+.chat-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.chat-search-bar input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.chat-search-bar input:focus {
+  outline: 2px solid #6366f1;
+  outline-offset: 0;
+  border-color: #6366f1;
+}
+
+.chat-search-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4338ca;
+  white-space: nowrap;
+}
+
+/* 검색 결과 한 줄 (누르면 그 메시지로 이동) */
+.chat-search-result {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.chat-search-result:hover,
+.chat-search-result:focus-visible {
+  border-color: #6366f1;
+  background: #f8f9ff;
+}
+
+.chat-search-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.chat-search-text {
+  font-size: 13px;
+  color: #1f2937;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.chat-hit {
+  background: #fde68a;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* 이동한 메시지를 잠깐 강조 */
+.chat-row.flash .chat-bubble {
+  animation: chat-flash 1.6s ease-out;
+}
+
+@keyframes chat-flash {
+  0%,
+  40% {
+    box-shadow: 0 0 0 3px #fbbf24;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-row.flash .chat-bubble {
+    animation: none;
+    box-shadow: 0 0 0 3px #fbbf24;
+  }
+}
+
+/* 말풍선 안 답장 인용 (누르면 원래 메시지로) */
+.chat-reply-quote {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 4px 8px;
+  text-align: left;
+  border: none;
+  border-left: 3px solid #a5b4fc;
+  border-radius: 6px;
+  background: #f3f4f6;
+  color: #374151;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chat-reply-quote:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.chat-bubble.mine .chat-reply-quote {
+  background: rgba(255, 255, 255, 0.18);
+  border-left-color: #fff;
+  color: #fff;
+}
+
+.chat-reply-author {
+  font-weight: 800;
+}
+
+.chat-reply-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* 입력칸 위: 지금 답장하는 메시지 */
+.chat-reply-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-top: 1px solid #e5e7eb;
+  background: #f8f9ff;
+  font-size: 12px;
+  color: #374151;
+}
+
+.chat-reply-bar-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  border-left: 3px solid #6366f1;
+  padding-left: 8px;
+}
+
+.chat-reply-bar .chat-reply-author {
+  color: #4338ca;
+}
+
+.chat-reply-bar .chat-link {
+  font-size: 14px;
+  padding: 2px 6px;
 }

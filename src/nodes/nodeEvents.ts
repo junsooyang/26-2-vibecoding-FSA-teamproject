@@ -26,3 +26,6 @@ export const NODE_COLLAPSE_EVENT = 'node-collapse'
 
 /** 노드 크기 조절 완료: detail = { id, w, h } */
 export const NODE_RESIZE_EVENT = 'node-resize'
+
+/** 노드 삭제 요청(확인 문구 입력 창 열기): detail = { id } */
+export const NODE_DELETE_REQUEST_EVENT = 'node-delete-request'

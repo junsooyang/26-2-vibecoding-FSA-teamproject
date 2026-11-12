@@ -5,6 +5,7 @@ import { fetchFileBlobUrl, isFileRef } from '../api/client'
 import { safeImageSrc } from '../collab/safeUrl'
 import { NODE_RESIZE_EVENT } from './nodeEvents'
 import NodeHandles from './NodeHandles'
+import DeleteNodeButton from './DeleteNodeButton'
 
 /** 사진 노드 최소 너비(px) */
 const MIN_WIDTH = 80
@@ -85,6 +86,9 @@ export default function ImageNode({ id, data, selected, width: liveWidth }: Node
       )}
 
       {d.label && <div className="image-node-caption">{d.label}</div>}
+
+      {/* 오른쪽 아래 삭제 버튼 (사진 위에 겹쳐 표시) */}
+      <DeleteNodeButton nodeId={id} className="image-delete" />
     </div>
   )
 }

@@ -48,6 +48,7 @@ export default function WbsEditPanel({
   onClose,
 }: Props) {
   const [label, setLabel] = useState(initial.label)
+  const [description, setDescription] = useState(initial.description ?? '')
   const [assignee, setAssignee] = useState(initial.assignee)
   const [status, setStatus] = useState<WbsStatus>(initial.status)
   const [progress, setProgress] = useState(initial.progress)
@@ -80,6 +81,7 @@ export default function WbsEditPanel({
     if (dateError) return
     onSave({
       label: label.trim() || '새 작업',
+      description: description.trim(),
       assignee: assignee.trim(),
       status,
       progress,
@@ -154,7 +156,7 @@ export default function WbsEditPanel({
 
   return (
     <div className="panel-overlay" onClick={onClose}>
-      <div className="panel" onClick={(e) => e.stopPropagation()}>
+      <div className="panel wbs-edit-panel" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>WBS 작업 편집</h2>
           <div className="panel-head-actions">
@@ -178,6 +180,17 @@ export default function WbsEditPanel({
           <label>
             작업명
             <input value={label} onChange={(e) => setLabel(e.target.value)} autoFocus />
+          </label>
+
+          <label>
+            작업내용
+            <textarea
+              className="wbs-desc-input"
+              value={description}
+              rows={4}
+              placeholder="무엇을, 어떻게 할지 자유롭게 적어요 (여러 줄 가능)"
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </label>
 
           <label>

@@ -71,6 +71,8 @@ export interface ChecklistItem {
 /** WBS(작업 분해) 노드 데이터 */
 export interface WbsNodeData {
   label: string
+  /** 작업 내용 (여러 줄 설명, 선택) */
+  description?: string
   /** 담당자 */
   assignee: string
   /** 상태: 할 일 / 진행 중 / 완료 */
@@ -181,6 +183,18 @@ export interface ChatMessage {
   at: number
   /** 마지막 수정 시각(ms). 수정된 적이 있으면 표시용 */
   editedAt?: number
+  /** 답장한 원래 메시지 (보낼 때의 내용을 짧게 복사해 둔다. 원문이 지워져도 인용은 남는다) */
+  replyTo?: ChatReplyRef
+}
+
+/** 채팅 답장 대상 요약 */
+export interface ChatReplyRef {
+  /** 원래 메시지 id (눌러서 그 메시지로 이동할 때 사용) */
+  id: string
+  /** 원래 메시지 보낸 사람 표시 이름 */
+  author: string
+  /** 원래 메시지 내용 일부 */
+  text: string
 }
 
 /** 방 공유 캘린더 일정 */

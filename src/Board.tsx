@@ -43,6 +43,7 @@ import CalendarPanel, { type PollDeadline, type WbsDeadline } from './screens/Ca
 import PersonalSpacePanel from './screens/PersonalSpacePanel'
 import DashboardPanel from './screens/DashboardPanel'
 import TextInputModal from './screens/TextInputModal'
+import ConfirmPhraseModal from './screens/ConfirmPhraseModal'
 import PollPanel from './screens/PollPanel'
 import {
   captureBoardPng,
@@ -61,6 +62,7 @@ import {
   CHECKLIST_TOGGLE_EVENT,
   NODE_COLLAPSE_EVENT,
   NODE_COMMENT_EVENT,
+  NODE_DELETE_REQUEST_EVENT,
   NODE_RESIZE_EVENT,
   NODE_VOTE_EVENT,
   PROMOTE_WBS_EVENT,
@@ -72,7 +74,7 @@ import {
 function nodeTitleOf(node: BoardNode): string {
   const d = node.data
   if (isWbsData(d)) return d.label || '(제목 없는 작업)'
-  if (isStickyData(d)) return d.text ? d.text.slice(0, 20) : '(빈 메모)'
+  if (isStickyData(d)) return d.title?.trim() || (d.text ? d.text.slice(0, 20) : '(빈 메모)')
   if (isImageData(d)) return d.label || '(이미지)'
   return String((d as { label?: string }).label ?? '(노드)')
 }
@@ -96,7 +98,7 @@ function buildAiModalState(targetNode: BoardNode | undefined): AiModalState {
       parentId: targetNode.id,
       parentLabel: nodeTitleOf(targetNode),
       initialTopic: d.label,
-      initialContext: checks,
+      initialContext: [d.description?.trim(), checks].filter(Boolean).join('\n'),
     }
   }
   if (isStickyData(d)) {
@@ -307,6 +309,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [showShare, setShowShare] = useState(false)
   // AI 작업 쪼개기 모달 상태 (null = 닫힘)
   const [aiModal, setAiModal] = useState<AiModalState | null>(null)
+  // 삭제 확인 창을 띄울 노드 id (null = 닫힘). "삭제" 를 입력해야 지워진다.
+  const [deleteNodeId, setDeleteNodeId] = useState<string | null>(null)
   // 여러 줄 텍스트 입력 모달 상태 (null = 닫힘)
   const [textModal, setTextModal] = useState<{
     heading: string
@@ -489,6 +493,10 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
       const { id, w, h } = (e as CustomEvent<{ id: string; w: number; h: number }>).detail ?? {}
       if (id && w && h) resizeNode(id, w, h)
     }
+    const onDeleteRequest = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id
+      if (id) setDeleteNodeId(id)
+    }
     window.addEventListener(WBS_TOGGLE_DONE_EVENT, onToggleDone)
     window.addEventListener(NODE_VOTE_EVENT, onVote)
     window.addEventListener(STICKY_COLOR_EVENT, onStickyColor)
@@ -497,7 +505,9 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     window.addEventListener(CHECKLIST_TOGGLE_EVENT, onChecklistToggle)
     window.addEventListener(NODE_COLLAPSE_EVENT, onCollapse)
     window.addEventListener(NODE_RESIZE_EVENT, onResize)
+    window.addEventListener(NODE_DELETE_REQUEST_EVENT, onDeleteRequest)
     return () => {
+      window.removeEventListener(NODE_DELETE_REQUEST_EVENT, onDeleteRequest)
       window.removeEventListener(WBS_TOGGLE_DONE_EVENT, onToggleDone)
       window.removeEventListener(NODE_VOTE_EVENT, onVote)
       window.removeEventListener(STICKY_COLOR_EVENT, onStickyColor)
@@ -518,7 +528,20 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     username,
   ])
 
-  const { screenToFlowPosition, getNodes, setCenter } = useReactFlow()
+  const { screenToFlowPosition, getNodes, setCenter, deleteElements } = useReactFlow()
+
+  // 삭제 확인 창에서 "삭제" 를 입력하고 확인하면 노드와 이어진 연결선을 함께 지운다.
+  // (deleteElements 는 onNodesChange/onEdgesChange 를 거치므로 공유 문서와 실행 취소에도 그대로 반영된다)
+  const deleteNodeTarget = deleteNodeId ? nodes.find((n) => n.id === deleteNodeId) : undefined
+  const confirmDeleteNode = useCallback(() => {
+    if (!deleteNodeId) return
+    void deleteElements({ nodes: [{ id: deleteNodeId }] })
+    setDeleteNodeId(null)
+  }, [deleteNodeId, deleteElements])
+  // 다른 팀원이 먼저 지워서 노드가 사라지면 확인 창도 닫는다
+  useEffect(() => {
+    if (deleteNodeId && !deleteNodeTarget) setDeleteNodeId(null)
+  }, [deleteNodeId, deleteNodeTarget])
 
   // 변경 기록에서 항목을 누르면 그 노드가 화면 가운데 오도록 이동
   const existingNodeIds = useMemo(() => new Set(nodes.map((n) => n.id)), [nodes])
@@ -1353,6 +1376,23 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         onChange={handleImagePicked}
       />
 
+      {deleteNodeTarget && (
+        <ConfirmPhraseModal
+          title="🗑 삭제"
+          message={
+            <>
+              <b>{nodeTitleOf(deleteNodeTarget)}</b> 을(를) 지우고, 이어진 연결선도 함께 지워요.
+              <br />
+              방의 모든 팀원 화면에서 사라져요. (바로 뒤 실행 취소 ↶ 로 되돌릴 수 있어요)
+            </>
+          }
+          phrase="삭제"
+          confirmLabel="삭제"
+          onConfirm={confirmDeleteNode}
+          onClose={() => setDeleteNodeId(null)}
+        />
+      )}
+
       {textModal && (
         <TextInputModal
           heading={textModal.heading}
@@ -1520,7 +1560,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           unreadById={chatUnreadById}
           currentUsername={username}
           peerCount={peers.length}
-          onSend={(text) => sendChatMessage(text, user.name, username, user.color)}
+          onSend={(text, replyTo) => sendChatMessage(text, user.name, username, user.color, replyTo)}
           onEdit={(id, text) => editChatMessage(id, text)}
           onDelete={(id) => deleteChatMessage(id)}
           onClose={() => setShowChat(false)}
@@ -1599,6 +1639,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         onNodeDoubleClick={handleNodeDoubleClick}
         onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleNodeDragStop}
+        // 마우스 휠 = 보드 위아래 이동 (Shift+휠 = 좌우, Ctrl+휠·두 손가락 벌리기 = 확대/축소)
+        panOnScroll
         snapToGrid
         snapGrid={[20, 20]}
         fitView

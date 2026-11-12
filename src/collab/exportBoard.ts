@@ -34,7 +34,7 @@ export async function captureBoardPng(opts: CaptureOptions): Promise<string> {
       const cls = (node as HTMLElement).classList
       if (!cls) return true
       return !cls.contains('cursor-layer') && !cls.contains('react-flow__minimap') &&
-        !cls.contains('react-flow__controls')
+        !cls.contains('react-flow__controls') && !cls.contains('node-delete-btn')
     },
   })
 }

@@ -8,6 +8,7 @@ import {
   type BoardNode,
   type CalendarEvent,
   type ChatMessage,
+  type ChatReplyRef,
   type ChecklistItem,
   type CollabHandle,
   type Comment,
@@ -824,14 +825,20 @@ export function useCollabBoard(
     const data = existing.data as {
       kind?: string
       label?: string
+      title?: string
       text?: string
       votes?: string[]
       comments?: Comment[]
     }
     if (data.kind === 'wbs') return id // 이미 WBS
-    const label = (data.label ?? data.text ?? '').trim() || '새 작업'
+    // 제목이 있는 메모: 제목 → 작업명, 본문 → 작업내용. 제목이 없으면 본문을 작업명으로.
+    const title = (data.title ?? '').trim()
+    const body = (data.text ?? '').trim()
+    const label = (title || data.label || body).trim() || '새 작업'
+    const description = title ? body : ''
     const wbsData: WbsNodeData = {
       label,
+      ...(description ? { description } : {}),
       assignee: '',
       status: 'todo',
       progress: 0,
@@ -904,7 +911,13 @@ export function useCollabBoard(
 
   /** 방 채팅 메시지 전송 (방에 들어온 참여자 모두에게 실시간 공유) */
   const sendChatMessage = useCallback(
-    (text: string, author: string, authorUsername: string, color: string) => {
+    (
+      text: string,
+      author: string,
+      authorUsername: string,
+      color: string,
+      replyTo?: ChatReplyRef,
+    ) => {
       const handle = handleRef.current
       const trimmed = text.trim()
       if (!handle || !trimmed) return
@@ -915,6 +928,7 @@ export function useCollabBoard(
         color,
         text: trimmed,
         at: Date.now(),
+        ...(replyTo ? { replyTo } : {}),
       }
       handle.doc.transact(() => {
         handle.chat.push([message])
