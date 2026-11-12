@@ -451,6 +451,68 @@ export function useCollabBoard(
     return id
   }, [])
 
+  /**
+   * 여러 개의 세부 WBS 작업 노드를 한 번의 트랜잭션으로 추가하고, 부모 노드가 있으면 연결선도 함께 만든다.
+   * 한 번의 실행 취소(Ctrl+Z)로 추가된 작업들과 연결선이 모두 되돌려진다.
+   */
+  const addWbsBatch = useCallback(
+    (
+      items: Array<{
+        label: string
+        checklist?: string[]
+        position: { x: number; y: number }
+      }>,
+      parentId?: string | null,
+    ): string[] => {
+      const handle = handleRef.current
+      if (!handle || items.length === 0) return []
+      const now = Date.now()
+      const style = currentDefaultEdgeStyle(handle)
+      const hasParent = !!parentId && handle.nodes.has(parentId)
+      const createdIds: string[] = []
+
+      handle.doc.transact(() => {
+        items.forEach((item, idx) => {
+          const id = `wbs-${now}-${idx}-${Math.floor(Math.random() * 1000)}`
+          const checklist: ChecklistItem[] = (item.checklist ?? [])
+            .map((t) => t.trim())
+            .filter(Boolean)
+            .map((text, ci) => ({
+              id: `chk-${now}-${idx}-${ci}`,
+              text,
+              done: false,
+            }))
+          const node: BoardNode = {
+            id,
+            position: item.position,
+            type: 'wbs',
+            data: {
+              label: item.label.trim() || '새 작업',
+              assignee: '',
+              status: 'todo',
+              progress: 0,
+              checklist: checklist.length > 0 ? checklist : undefined,
+              kind: 'wbs',
+              createdAt: now + idx,
+            },
+          }
+          handle.nodes.set(id, node)
+          createdIds.push(id)
+
+          if (hasParent && parentId) {
+            const edgeId = `edge-${parentId}-${id}`
+            handle.edges.set(
+              edgeId,
+              withEdgeStyle({ id: edgeId, source: parentId, target: id }, style),
+            )
+          }
+        })
+      })
+      return createdIds
+    },
+    [],
+  )
+
   /** WBS 노드 필드 수정 (부분 업데이트) */
   const updateWbsNode = useCallback((id: string, patch: Partial<WbsNodeData>) => {
     const handle = handleRef.current
@@ -1035,6 +1097,7 @@ export function useCollabBoard(
       addNode,
       renameNode,
       addWbsNode,
+      addWbsBatch,
       updateWbsNode,
       toggleWbsDone,
       addAttachment,
@@ -1095,6 +1158,7 @@ export function useCollabBoard(
       addNode,
       renameNode,
       addWbsNode,
+      addWbsBatch,
       updateWbsNode,
       toggleWbsDone,
       addAttachment,

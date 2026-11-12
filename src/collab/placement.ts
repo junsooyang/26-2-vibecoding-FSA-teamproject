@@ -90,3 +90,21 @@ export function findFreePosition(
   }
   return best ? { x: best.x, y: best.y } : origin
 }
+
+/**
+ * 여러 개의 노드를 차례대로 겹치지 않게 배치한다.
+ * 앞서 배치한 노드의 자리도 occupied 목록에 즉시 반영해, 새로 생기는 노드끼리도 겹치지 않는다.
+ */
+export function findFreePositions(
+  desiredList: Array<{ x: number; y: number }>,
+  size: { width: number; height: number },
+  existing: Box[],
+  options: PlacementOptions = {},
+): Array<{ x: number; y: number }> {
+  const occupied = [...existing]
+  return desiredList.map((desired) => {
+    const pos = findFreePosition(desired, size, occupied, options)
+    occupied.push({ x: pos.x, y: pos.y, width: size.width, height: size.height })
+    return pos
+  })
+}

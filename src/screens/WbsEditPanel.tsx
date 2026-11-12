@@ -14,6 +14,7 @@ interface Props {
   onAddChecklistItem: (text: string) => void
   onToggleChecklistItem: (itemId: string) => void
   onRemoveChecklistItem: (itemId: string) => void
+  onOpenAiBreakdown?: () => void
   onClose: () => void
 }
 
@@ -43,6 +44,7 @@ export default function WbsEditPanel({
   onAddChecklistItem,
   onToggleChecklistItem,
   onRemoveChecklistItem,
+  onOpenAiBreakdown,
   onClose,
 }: Props) {
   const [label, setLabel] = useState(initial.label)
@@ -155,9 +157,21 @@ export default function WbsEditPanel({
       <div className="panel" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>WBS 작업 편집</h2>
-          <button type="button" className="ghost" onClick={onClose}>
-            닫기
-          </button>
+          <div className="panel-head-actions">
+            {onOpenAiBreakdown && (
+              <button
+                type="button"
+                className="ghost"
+                onClick={onOpenAiBreakdown}
+                title="이 작업을 여러 개의 하위 WBS 작업으로 AI 분해"
+              >
+                ✨ 하위 작업 쪼개기
+              </button>
+            )}
+            <button type="button" className="ghost" onClick={onClose}>
+              닫기
+            </button>
+          </div>
         </div>
 
         <form onSubmit={save} className="wbs-form">

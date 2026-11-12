@@ -2,7 +2,7 @@
  * 새 노드 빈자리 찾기 테스트 (src/collab/placement.ts 의 실제 코드 사용).
  */
 import { describe, expect, it } from 'vitest'
-import { findFreePosition, type Box } from '../../src/collab/placement'
+import { findFreePosition, findFreePositions, type Box } from '../../src/collab/placement'
 
 const size = { width: 200, height: 100 }
 const overlaps = (a: Box, b: Box) =>
@@ -42,5 +42,18 @@ describe('빈자리 찾기', () => {
   it('찾을 범위 안에 빈자리가 없으면 원하는 자리 그대로 (만들기는 된다)', () => {
     const wall: Box[] = [{ x: -10000, y: -10000, width: 20000, height: 20000 }]
     expect(findFreePosition({ x: 0, y: 0 }, size, wall, { maxRings: 5 })).toEqual({ x: 0, y: 0 })
+  })
+
+  it('findFreePositions 는 여러 개의 세부 작업을 한 번에 배치할 때도 서로 겹치지 않는다', () => {
+    const existing: Box[] = [{ x: 0, y: 0, width: 200, height: 100 }]
+    const desired = Array.from({ length: 5 }, () => ({ x: 0, y: 0 }))
+    const positions = findFreePositions(desired, size, existing)
+    expect(positions).toHaveLength(5)
+    const all: Box[] = [...existing]
+    for (const p of positions) {
+      const box = { ...p, ...size }
+      for (const prev of all) expect(overlaps(box, prev)).toBe(false)
+      all.push(box)
+    }
   })
 })
