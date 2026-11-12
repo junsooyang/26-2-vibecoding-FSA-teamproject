@@ -64,6 +64,22 @@ export interface PersonalSpace {
   note?: string
 }
 
+/** AI 가 제안한 세부 WBS 작업 1개 */
+export interface AiTaskDraft {
+  label: string
+  checklist: string[]
+}
+
+export interface AiBreakdownResponse {
+  provider: 'gemini' | 'openai' | 'rule'
+  model: string
+  tasks: AiTaskDraft[]
+  /** 외부 AI 가 실패해 기본 단계 추천으로 대신했는지 */
+  fallback?: boolean
+  /** 대신한 이유 (화면 안내용) */
+  notice?: string
+}
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
 }
@@ -222,4 +238,15 @@ export const api = {
     request<PersonalSpace>('GET', `/personal/${slug}`),
   savePersonal: (slug: string, data: PersonalSpace) =>
     request<{ ok: true }>('PUT', `/personal/${slug}`, data),
+
+  // AI 기반 WBS 세부 작업 분해
+  breakdownTasks: (
+    slug: string,
+    payload: { topic: string; context?: string; count?: number },
+  ) =>
+    request<AiBreakdownResponse>(
+      'POST',
+      `/ai/${encodeURIComponent(slug)}/breakdown`,
+      payload,
+    ),
 }

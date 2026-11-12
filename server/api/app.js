@@ -15,6 +15,7 @@ import authRouter, { requireAuth } from './auth.js'
 import roomsRouter from './rooms.js'
 import personalRouter from './personal.js'
 import filesRouter from './files.js'
+import aiRouter from './ai.js'
 
 /**
  * CORS 허용 출처. CORS_ORIGIN 에 쉼표로 적으면 그 출처만 허용한다.
@@ -89,6 +90,7 @@ export function createApp() {
   app.use('/api/rooms', roomsRouter)
   app.use('/api/personal', personalRouter)
   app.use('/api/files', filesRouter)
+  app.use('/api/ai', aiRouter)
 
   // JSON 파싱 오류 등 공통 에러 핸들러
   // 내부 오류 문구(DB·파서 메시지 등)는 사용자에게 보내지 않는다.

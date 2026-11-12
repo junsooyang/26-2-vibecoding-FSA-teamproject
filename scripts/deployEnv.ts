@@ -88,7 +88,7 @@ export function findSecretLeaks(env: Record<string, string | undefined>): string
     if (!key.startsWith('VITE_')) continue
     const value = (raw ?? '').trim()
     if (!value) continue
-    const byName = /SECRET|SERVICE_ROLE|PASSWORD|DATABASE_URL|JWT/i.test(key)
+    const byName = /SECRET|SERVICE_ROLE|PASSWORD|DATABASE_URL|JWT|GEMINI_API_KEY|OPENAI_API_KEY/i.test(key)
     const byValue =
       value.startsWith('sb_secret_') || /^postgres(ql)?:\/\//i.test(value) || isServiceRoleJwt(value)
     if (byName || byValue) {

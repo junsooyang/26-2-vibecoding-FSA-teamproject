@@ -38,3 +38,11 @@ services:
       # 1·2 로 두면 프록시 IP 가 사용자 IP 로 잡혀 모두가 같은 IP 로 보인다.
       - key: TRUST_PROXY
         value: "3"
+      # AI 작업 쪼개기: Google AI Studio 에서 무료 발급한 Gemini 키 (비우면 기본 단계 추천으로 동작)
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.1-flash-lite
+      # 서버 전체 하루 외부 AI 호출 상한 (무료 한도 보호)
+      - key: AI_DAILY_LIMIT
+        value: "200"

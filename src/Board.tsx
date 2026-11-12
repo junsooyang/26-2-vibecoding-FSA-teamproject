@@ -17,7 +17,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { useCollabBoard, type AwarenessUser } from './collab/useCollabBoard'
 import { edgeStyleOf } from './collab/boardChanges'
-import { DEFAULT_NODE_SIZE, NEW_NODE_SIZE, findFreePosition } from './collab/placement'
+import { DEFAULT_NODE_SIZE, NEW_NODE_SIZE, findFreePosition, findFreePositions } from './collab/placement'
 import { myUnreadCount, unreadCountsByMessage, type ChatMember } from './collab/chatReads'
 import {
   isImageData,
@@ -28,9 +28,10 @@ import {
   type StickyColor,
   type WbsNodeData,
 } from './collab/yjs'
-import { api, uploadFile } from './api/client'
+import { api, uploadFile, type AiTaskDraft } from './api/client'
 import MembersPanel from './screens/MembersPanel'
 import WbsEditPanel from './screens/WbsEditPanel'
+import AiBreakdownModal from './screens/AiBreakdownModal'
 import CommentsPanel from './screens/CommentsPanel'
 import ChatPanel from './screens/ChatPanel'
 import DeleteBoardModal from './screens/DeleteBoardModal'
@@ -74,6 +75,60 @@ function nodeTitleOf(node: BoardNode): string {
   if (isStickyData(d)) return d.text ? d.text.slice(0, 20) : '(빈 메모)'
   if (isImageData(d)) return d.label || '(이미지)'
   return String((d as { label?: string }).label ?? '(노드)')
+}
+
+interface AiModalState {
+  parentId: string | null
+  parentLabel?: string
+  initialTopic: string
+  initialContext: string
+}
+
+/** 선택된 노드(있으면)에서 AI 작업 쪼개기 모달 초기값을 만든다. */
+function buildAiModalState(targetNode: BoardNode | undefined): AiModalState {
+  if (!targetNode || isImageData(targetNode.data)) {
+    return { parentId: null, initialTopic: '', initialContext: '' }
+  }
+  const d = targetNode.data
+  if (isWbsData(d)) {
+    const checks = (d.checklist ?? []).map((c) => c.text).filter(Boolean).join(', ')
+    return {
+      parentId: targetNode.id,
+      parentLabel: nodeTitleOf(targetNode),
+      initialTopic: d.label,
+      initialContext: checks,
+    }
+  }
+  if (isStickyData(d)) {
+    return {
+      parentId: targetNode.id,
+      parentLabel: nodeTitleOf(targetNode),
+      initialTopic: [d.title, d.text].filter(Boolean).join(' - '),
+      initialContext: '',
+    }
+  }
+  return {
+    parentId: targetNode.id,
+    parentLabel: nodeTitleOf(targetNode),
+    initialTopic: String((d as { label?: string }).label ?? ''),
+    initialContext: '',
+  }
+}
+
+/** 부모 노드(또는 화면 중심)를 기준으로 하위 WBS 작업들의 희망 배치 좌표를 계산한다. */
+function buildSubtaskDesiredPositions(
+  parentNode: { position: { x: number; y: number } } | undefined,
+  center: { x: number; y: number },
+  count: number,
+): Array<{ x: number; y: number }> {
+  const stepY = NEW_NODE_SIZE.wbs.height + 30
+  const baseX = parentNode ? parentNode.position.x + 280 : center.x - NEW_NODE_SIZE.wbs.width / 2
+  const midY = parentNode ? parentNode.position.y : center.y - NEW_NODE_SIZE.wbs.height / 2
+  const startY = midY - ((count - 1) * stepY) / 2
+  return Array.from({ length: count }, (_, i) => ({
+    x: baseX,
+    y: startY + i * stepY,
+  }))
 }
 
 /** 업로드 이미지 최대 크기(5MB). 서버도 같은 한도로 검사한다. */
@@ -250,6 +305,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [showMore, setShowMore] = useState(false)
   // 공유(이미지/PDF 저장) 메뉴 펼침 여부
   const [showShare, setShowShare] = useState(false)
+  // AI 작업 쪼개기 모달 상태 (null = 닫힘)
+  const [aiModal, setAiModal] = useState<AiModalState | null>(null)
   // 여러 줄 텍스트 입력 모달 상태 (null = 닫힘)
   const [textModal, setTextModal] = useState<{
     heading: string
@@ -275,6 +332,7 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     onConnect,
     renameNode,
     addWbsNode,
+    addWbsBatch,
     updateWbsNode,
     toggleWbsDone,
     addAttachment,
@@ -671,6 +729,49 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     if (id) setEditingWbsId(id)
   }, [addWbsNode, placeNewNode])
 
+  // 선택된 노드(또는 자유 주제)를 기준으로 AI 작업 쪼개기 모달 열기
+  const handleOpenAiBreakdown = useCallback(
+    (explicitNodeId?: string) => {
+      const target = explicitNodeId
+        ? nodes.find((n) => n.id === explicitNodeId)
+        : nodes.find((n) => n.selected && !isImageData(n.data))
+      setAiModal(buildAiModalState(target))
+    },
+    [nodes],
+  )
+
+  // AI 미리보기에서 확인한 세부 작업들을 보드에 일괄 추가
+  const handleApplyAiSubtasks = useCallback(
+    (tasks: AiTaskDraft[]) => {
+      if (!aiModal || tasks.length === 0) return
+      const currentNodes = getNodes()
+      const parentNode = aiModal.parentId
+        ? currentNodes.find((n) => n.id === aiModal.parentId)
+        : undefined
+      const center = screenToFlowPosition({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      })
+      const existing = currentNodes.map((n) => ({
+        x: n.position.x,
+        y: n.position.y,
+        width: n.measured?.width ?? n.width ?? DEFAULT_NODE_SIZE.width,
+        height: n.measured?.height ?? n.height ?? DEFAULT_NODE_SIZE.height,
+      }))
+      const desired = buildSubtaskDesiredPositions(parentNode, center, tasks.length)
+      const positions = findFreePositions(desired, NEW_NODE_SIZE.wbs, existing)
+      addWbsBatch(
+        tasks.map((t, i) => ({
+          label: t.label,
+          checklist: t.checklist,
+          position: positions[i],
+        })),
+        parentNode?.id ?? null,
+      )
+    },
+    [aiModal, getNodes, screenToFlowPosition, addWbsBatch],
+  )
+
   // 화면 중앙 근처에 스티커 메모 추가 (여러 줄 입력 모달)
   const handleAddSticky = useCallback(() => {
     setTextModal({
@@ -1052,6 +1153,13 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         <span className="tool-group" data-step="3">
           <span className="tool-step">③ 작업</span>
           <button onClick={handleAddWbs}>+ WBS 작업</button>
+          <button
+            type="button"
+            onClick={() => handleOpenAiBreakdown()}
+            title="선택한 노드나 큰 주제를 AI로 여러 세부 WBS 작업으로 쪼개기"
+          >
+            ✨ AI 작업 쪼개기
+          </button>
           <label className={assigneeFilter ? 'assignee-filter active' : 'assignee-filter'}>
             <span aria-hidden="true">👤</span>
             <span className="sr-only">담당자별로 보기</span>
@@ -1461,7 +1569,23 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
           onAddChecklistItem={(t) => addChecklistItem(editingWbsId, t)}
           onToggleChecklistItem={(iid) => toggleChecklistItem(editingWbsId, iid)}
           onRemoveChecklistItem={(iid) => removeChecklistItem(editingWbsId, iid)}
+          onOpenAiBreakdown={() => {
+            const targetId = editingWbsId
+            setEditingWbsId(null)
+            handleOpenAiBreakdown(targetId)
+          }}
           onClose={() => setEditingWbsId(null)}
+        />
+      )}
+
+      {aiModal && (
+        <AiBreakdownModal
+          roomSlug={room}
+          initialTopic={aiModal.initialTopic}
+          initialContext={aiModal.initialContext}
+          parentLabel={aiModal.parentLabel}
+          onApply={handleApplyAiSubtasks}
+          onClose={() => setAiModal(null)}
         />
       )}
 
