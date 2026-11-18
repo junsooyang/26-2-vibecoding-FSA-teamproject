@@ -23,6 +23,7 @@ import {
   isImageData,
   isStickyData,
   isWbsData,
+  type BoardEdge,
   type BoardNode,
   type Comment,
   type StickyColor,
@@ -309,8 +310,12 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   const [showShare, setShowShare] = useState(false)
   // AI 작업 쪼개기 모달 상태 (null = 닫힘)
   const [aiModal, setAiModal] = useState<AiModalState | null>(null)
-  // 삭제 확인 창을 띄울 노드 id (null = 닫힘). "삭제" 를 입력해야 지워진다.
-  const [deleteNodeId, setDeleteNodeId] = useState<string | null>(null)
+  // 삭제 확인 창에 띄울 노드 id 들 (null = 닫힘). 🗑 버튼이든 Backspace/Delete 키든 "삭제" 를 입력해야 지워진다.
+  const [deleteAskIds, setDeleteAskIds] = useState<string[] | null>(null)
+  // 확인 창의 답(삭제/취소)을 React Flow 에 돌려줄 함수 (onBeforeDelete 가 기다리는 Promise)
+  const deleteResolveRef = useRef<((ok: boolean) => void) | null>(null)
+  // 🗑 버튼 이벤트 처리기는 useReactFlow 보다 먼저 만들어져서, 지우기 함수를 ref 로 넘겨받는다
+  const deleteElementsRef = useRef<ReturnType<typeof useReactFlow>['deleteElements'] | null>(null)
   // 여러 줄 텍스트 입력 모달 상태 (null = 닫힘)
   const [textModal, setTextModal] = useState<{
     heading: string
@@ -495,7 +500,8 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
     }
     const onDeleteRequest = (e: Event) => {
       const id = (e as CustomEvent<{ id: string }>).detail?.id
-      if (id) setDeleteNodeId(id)
+      // 키보드 삭제와 같은 길(onBeforeDelete)을 지나므로 여기서도 확인 창이 뜬다
+      if (id) void deleteElementsRef.current?.({ nodes: [{ id }] })
     }
     window.addEventListener(WBS_TOGGLE_DONE_EVENT, onToggleDone)
     window.addEventListener(NODE_VOTE_EVENT, onVote)
@@ -530,18 +536,38 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
 
   const { screenToFlowPosition, getNodes, setCenter, deleteElements } = useReactFlow()
 
-  // 삭제 확인 창에서 "삭제" 를 입력하고 확인하면 노드와 이어진 연결선을 함께 지운다.
-  // (deleteElements 는 onNodesChange/onEdgesChange 를 거치므로 공유 문서와 실행 취소에도 그대로 반영된다)
-  const deleteNodeTarget = deleteNodeId ? nodes.find((n) => n.id === deleteNodeId) : undefined
-  const confirmDeleteNode = useCallback(() => {
-    if (!deleteNodeId) return
-    void deleteElements({ nodes: [{ id: deleteNodeId }] })
-    setDeleteNodeId(null)
-  }, [deleteNodeId, deleteElements])
-  // 다른 팀원이 먼저 지워서 노드가 사라지면 확인 창도 닫는다
+  deleteElementsRef.current = deleteElements
+
+  // 노드 삭제는 모두(🗑 버튼·Backspace·Delete 키) 여기서 멈추고 "삭제" 입력 창을 띄운다.
+  // 확인하면 노드와 이어진 연결선을 함께 지운다. 연결선만 고른 경우는 묻지 않고 바로 지운다.
+  // (지우기는 onNodesChange/onEdgesChange 를 거치므로 공유 문서와 실행 취소에도 그대로 반영된다)
+  const finishDeleteAsk = useCallback((ok: boolean) => {
+    deleteResolveRef.current?.(ok)
+    deleteResolveRef.current = null
+    setDeleteAskIds(null)
+  }, [])
+  const handleBeforeDelete = useCallback(
+    ({ nodes: targets }: { nodes: BoardNode[]; edges: BoardEdge[] }) => {
+      if (targets.length === 0) return Promise.resolve(true)
+      // 이미 떠 있는 확인 창이 있으면 그 요청은 취소로 처리
+      deleteResolveRef.current?.(false)
+      return new Promise<boolean>((resolve) => {
+        deleteResolveRef.current = resolve
+        setDeleteAskIds(targets.map((n) => n.id))
+      })
+    },
+    [],
+  )
+  const deleteTargets = useMemo(
+    () => (deleteAskIds ? nodes.filter((n) => deleteAskIds.includes(n.id)) : []),
+    [deleteAskIds, nodes],
+  )
+  // 다른 팀원이 먼저 모두 지워서 대상이 사라지면 확인 창도 닫는다
   useEffect(() => {
-    if (deleteNodeId && !deleteNodeTarget) setDeleteNodeId(null)
-  }, [deleteNodeId, deleteNodeTarget])
+    if (deleteAskIds && deleteTargets.length === 0) finishDeleteAsk(false)
+  }, [deleteAskIds, deleteTargets.length, finishDeleteAsk])
+  // 보드를 떠날 때 기다리던 삭제 요청은 취소
+  useEffect(() => () => deleteResolveRef.current?.(false), [])
 
   // 변경 기록에서 항목을 누르면 그 노드가 화면 가운데 오도록 이동
   const existingNodeIds = useMemo(() => new Set(nodes.map((n) => n.id)), [nodes])
@@ -1376,20 +1402,34 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         onChange={handleImagePicked}
       />
 
-      {deleteNodeTarget && (
+      {deleteTargets.length > 0 && (
         <ConfirmPhraseModal
           title="🗑 삭제"
           message={
             <>
-              <b>{nodeTitleOf(deleteNodeTarget)}</b> 을(를) 지우고, 이어진 연결선도 함께 지워요.
+              {deleteTargets.length === 1 ? (
+                <>
+                  <b>{nodeTitleOf(deleteTargets[0])}</b> 을(를)
+                </>
+              ) : (
+                <>
+                  선택한 <b>{deleteTargets.length}개</b>(
+                  {deleteTargets
+                    .slice(0, 3)
+                    .map((n) => nodeTitleOf(n))
+                    .join(', ')}
+                  {deleteTargets.length > 3 ? ' 등' : ''})를
+                </>
+              )}{' '}
+              지우고, 이어진 연결선도 함께 지워요.
               <br />
               방의 모든 팀원 화면에서 사라져요. (바로 뒤 실행 취소 ↶ 로 되돌릴 수 있어요)
             </>
           }
           phrase="삭제"
           confirmLabel="삭제"
-          onConfirm={confirmDeleteNode}
-          onClose={() => setDeleteNodeId(null)}
+          onConfirm={() => finishDeleteAsk(true)}
+          onClose={() => finishDeleteAsk(false)}
         />
       )}
 
@@ -1639,6 +1679,9 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         onNodeDoubleClick={handleNodeDoubleClick}
         onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleNodeDragStop}
+        // Backspace·Delete 로 노드를 지울 때도 "삭제" 입력 창을 거친다
+        deleteKeyCode={['Backspace', 'Delete']}
+        onBeforeDelete={handleBeforeDelete}
         // 마우스 휠 = 보드 위아래 이동 (Shift+휠 = 좌우, Ctrl+휠·두 손가락 벌리기 = 확대/축소)
         panOnScroll
         snapToGrid
