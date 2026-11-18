@@ -1,7 +1,8 @@
 import { NodeResizer, type NodeProps } from '@xyflow/react'
 import type { StickyColor, StickyNodeData } from '../collab/yjs'
 import { useCurrentUsername } from './CurrentUserContext'
-import { NODE_COLLAPSE_EVENT, NODE_RESIZE_EVENT, PROMOTE_WBS_EVENT, STICKY_COLOR_EVENT } from './nodeEvents'
+import { NODE_COLLAPSE_EVENT, PROMOTE_WBS_EVENT, STICKY_COLOR_EVENT } from './nodeEvents'
+import { useLiveResize } from './useLiveResize'
 import NodeHandles from './NodeHandles'
 import { STICKY_MIN_SIZE, stickyFontScale } from './stickyLayout'
 import VoteButton from './VoteButton'
@@ -28,7 +29,8 @@ const LONG_TEXT = 40
  * - 모서리를 끌어 크기 조절(공유 저장)
  * - 내용이 길면 접기/펼치기
  */
-export default function StickyNode({ id, data, selected, width: liveWidth, height: liveHeight }: NodeProps) {
+export default function StickyNode({ id, data, selected }: NodeProps) {
+  const resize = useLiveResize(id)
   const d = data as StickyNodeData & { seq?: number; w?: number; h?: number; collapsed?: boolean }
   const me = useCurrentUsername()
   const palette = STICKY_COLORS[d.color] ?? STICKY_COLORS.yellow
@@ -55,9 +57,10 @@ export default function StickyNode({ id, data, selected, width: liveWidth, heigh
     window.dispatchEvent(new CustomEvent(NODE_COLLAPSE_EVENT, { detail: { id } }))
   }
 
-  // 크기: 끄는 중이면 React Flow 가 알려 주는 실시간 크기, 아니면 공유 저장된 크기 (없으면 CSS 기본)
-  const width = liveWidth && liveWidth > 0 ? liveWidth : d.w
-  const height = collapsed ? undefined : liveHeight && liveHeight > 0 ? liveHeight : d.h
+  // 크기: 모서리를 끄는 중이면 그 실시간 크기, 아니면 공유 저장된 크기 (없으면 CSS 기본)
+  // (React Flow 가 주는 측정 크기는 쓰지 않는다 → 겹칠 때 크기가 늘어난 채 남는 문제 방지)
+  const width = resize.live?.width ?? d.w
+  const height = collapsed ? undefined : resize.live?.height ?? d.h
   // 메모 크기에 맞춰 글자·버튼 크기를 함께 줄이고 키운다 (줄여도 잘리지 않게)
   const scale = stickyFontScale(width, height)
   const sizeStyle: React.CSSProperties = {
@@ -79,13 +82,8 @@ export default function StickyNode({ id, data, selected, width: liveWidth, heigh
         isVisible={selected}
         minWidth={STICKY_MIN_SIZE.width}
         minHeight={STICKY_MIN_SIZE.height}
-        onResizeEnd={(_e, params) => {
-          window.dispatchEvent(
-            new CustomEvent(NODE_RESIZE_EVENT, {
-              detail: { id, w: Math.round(params.width), h: Math.round(params.height) },
-            }),
-          )
-        }}
+        onResize={resize.onResize}
+        onResizeEnd={resize.onResizeEnd}
       />
       <NodeHandles />
 

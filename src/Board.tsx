@@ -37,6 +37,12 @@ import CommentsPanel from './screens/CommentsPanel'
 import ChatPanel from './screens/ChatPanel'
 import DeleteBoardModal from './screens/DeleteBoardModal'
 import DeadlineAlert from './screens/DeadlineAlert'
+import {
+  deadlineSeenStorageKey,
+  nextDeadlineSeen,
+  parseDeadlineSeen,
+  pickDeadlineAlerts,
+} from './collab/deadlineSeen'
 import GanttPanel, { type GanttTask } from './screens/GanttPanel'
 import HistoryPanel from './screens/HistoryPanel'
 import { dueBadge, localIsoDate, splitAssignees } from './collab/wbsUtils'
@@ -1074,17 +1080,36 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
   // --- 마감 임박 알림 ---
   // 보드에 들어와 서버 내용을 다 받은 직후 한 번만, 완료되지 않은 작업 중
   // 마감이 지났거나 오늘/내일인 것을 모아 보여준다.
+  // 마감이 지난 작업은 한 번 확인하면(알림을 닫거나 작업·캘린더를 열면) 다음부터 다시 알리지 않는다.
   const [deadlineAlert, setDeadlineAlert] = useState<WbsDeadline[] | null>(null)
   const deadlineCheckedRef = useRef(false)
+  const deadlineSeenKey = deadlineSeenStorageKey(room, username)
   useEffect(() => {
     if (!synced || deadlineCheckedRef.current) return
     deadlineCheckedRef.current = true
-    const tomorrow = localIsoDate(1)
-    const urgent = wbsDeadlines
-      .filter((d) => !d.done && d.due <= tomorrow)
-      .sort((a, b) => a.due.localeCompare(b.due))
+    let seen = new Set<string>()
+    try {
+      seen = parseDeadlineSeen(localStorage.getItem(deadlineSeenKey))
+    } catch {
+      // 저장소를 못 쓰면 모두 알린다
+    }
+    const urgent = pickDeadlineAlerts(wbsDeadlines, seen, localIsoDate(0), localIsoDate(1))
     if (urgent.length > 0) setDeadlineAlert(urgent)
-  }, [synced, wbsDeadlines])
+  }, [synced, wbsDeadlines, deadlineSeenKey])
+
+  /** 마감 알림 닫기 + 이번에 보여 준 지난 마감을 "확인함"으로 기억 */
+  const dismissDeadlineAlert = useCallback(() => {
+    if (deadlineAlert) {
+      try {
+        const seen = parseDeadlineSeen(localStorage.getItem(deadlineSeenKey))
+        const next = nextDeadlineSeen(seen, deadlineAlert, wbsDeadlines, localIsoDate(0))
+        localStorage.setItem(deadlineSeenKey, JSON.stringify(next))
+      } catch {
+        // 기억하지 못하면 다음에 한 번 더 알린다
+      }
+    }
+    setDeadlineAlert(null)
+  }, [deadlineAlert, deadlineSeenKey, wbsDeadlines])
 
   // 간트차트 / CSV 내보내기용 WBS 작업 목록 (생성 순번 포함)
   const ganttTasks = useMemo<GanttTask[]>(
@@ -1549,14 +1574,14 @@ function BoardInner({ room, roomName, user, username, onLeave }: BoardProps) {
         <DeadlineAlert
           items={deadlineAlert}
           onOpenTask={(id) => {
-            setDeadlineAlert(null)
+            dismissDeadlineAlert()
             setEditingWbsId(id)
           }}
           onOpenCalendar={() => {
-            setDeadlineAlert(null)
+            dismissDeadlineAlert()
             openPanel('calendar')
           }}
-          onClose={() => setDeadlineAlert(null)}
+          onClose={dismissDeadlineAlert}
         />
       )}
 

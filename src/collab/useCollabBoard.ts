@@ -13,7 +13,6 @@ import {
   type CollabHandle,
   type Comment,
   type EdgeStyle,
-  type ImageNodeData,
   type Poll,
   type PollOption,
   type StickyColor,
@@ -407,20 +406,6 @@ export function useCollabBoard(
     undoManagerRef.current?.redo()
   }, [])
 
-  /** 새 노드(아이디어) 추가 */
-  const addNode = useCallback((label: string, position: { x: number; y: number }) => {
-    const handle = handleRef.current
-    if (!handle) return
-    const id = `node-${Date.now()}-${Math.floor(Math.random() * 1000)}`
-    const node: BoardNode = {
-      id,
-      position,
-      data: { label, createdAt: Date.now() },
-      type: 'default',
-    }
-    handle.nodes.set(id, node)
-  }, [])
-
   /** 노드 라벨 수정 (일반 노드) */
   const renameNode = useCallback((id: string, label: string) => {
     const handle = handleRef.current
@@ -604,18 +589,6 @@ export function useCollabBoard(
     },
     [],
   )
-
-  /** 이미지 노드 필드 수정 (캡션/너비 등) */
-  const updateImageNode = useCallback((id: string, patch: Partial<ImageNodeData>) => {
-    const handle = handleRef.current
-    if (!handle) return
-    const existing = handle.nodes.get(id)
-    if (!existing) return
-    handle.nodes.set(id, {
-      ...existing,
-      data: { ...existing.data, ...patch } as BoardNode['data'],
-    })
-  }, [])
 
   /**
    * 노드 병합(합치기): 드래그한 노드(sourceId)를 대상 노드(targetId) 아래로
@@ -1108,7 +1081,6 @@ export function useCollabBoard(
       onNodesChange,
       onEdgesChange,
       onConnect,
-      addNode,
       renameNode,
       addWbsNode,
       addWbsBatch,
@@ -1119,7 +1091,6 @@ export function useCollabBoard(
       setCursor,
       applyLayout,
       addImageNode,
-      updateImageNode,
       connectNodes,
       alignGrid,
       addStickyNode,
@@ -1169,7 +1140,6 @@ export function useCollabBoard(
       onNodesChange,
       onEdgesChange,
       onConnect,
-      addNode,
       renameNode,
       addWbsNode,
       addWbsBatch,
@@ -1180,7 +1150,6 @@ export function useCollabBoard(
       setCursor,
       applyLayout,
       addImageNode,
-      updateImageNode,
       connectNodes,
       alignGrid,
       addStickyNode,

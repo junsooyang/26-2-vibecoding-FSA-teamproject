@@ -192,18 +192,6 @@ body {
   color: #4338ca;
 }
 
-.toolbar .peer-chip {
-  color: #fff;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.toolbar .hint {
-  color: #9ca3af;
-  margin-left: auto;
-}
 
 .toolbar button {
   padding: 6px 12px;
@@ -786,9 +774,8 @@ button.danger:hover {
   border-radius: 12px;
 }
 
-.react-flow__node.drop-target {
-  position: relative;
-}
+/* (노드 칸은 React Flow 가 이미 position: absolute 로 둔다. relative 로 바꾸면 칸이 보드 너비만큼
+   늘어나 겹칠 때 노드가 가로로 길어진다 → 따로 정하지 않는다) */
 
 .react-flow__node.drop-target::after {
   content: '여기에 합치기';
@@ -984,22 +971,6 @@ button.danger:hover {
   color: #1f2937;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.comment-del {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  border: none;
-  background: transparent;
-  color: #dc2626;
-  font-size: 11px;
-  cursor: pointer;
-  display: none;
-}
-
-.comment-item:hover .comment-del {
-  display: inline;
 }
 
 .comment-form {
@@ -1739,12 +1710,6 @@ button.cal-event.poll:focus-visible {
   font-size: 11px;
   font-weight: 700;
   color: #6b7280;
-  white-space: nowrap;
-}
-
-.tool-tip-inline {
-  font-size: 11px;
-  color: #9ca3af;
   white-space: nowrap;
 }
 
@@ -3887,10 +3852,6 @@ button.history-item:focus-visible {
     display: inline-flex;
   }
 
-  .comment-item .comment-del {
-    display: inline;
-  }
-
   /* 손가락으로 누르기 쉽게 연결 점을 키운다 */
   .node-handle {
     opacity: 1;
@@ -3917,8 +3878,7 @@ button.history-item:focus-visible {
     padding: 2px 4px;
   }
 
-  .tool-step,
-  .tool-tip-inline {
+  .tool-step {
     display: none;
   }
 
@@ -4825,10 +4785,6 @@ button.history-item:focus-visible {
     gap: 8px;
     padding: 8px 12px;
   }
-
-  .tool-tip-inline {
-    display: none;
-  }
 }
 
 /* ======================================================================
@@ -4852,8 +4808,7 @@ button.history-item:focus-visible {
     padding: 2px 5px;
   }
 
-  .tool-step,
-  .tool-tip-inline {
+  .tool-step {
     display: none;
   }
 

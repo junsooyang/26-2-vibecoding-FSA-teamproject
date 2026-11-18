@@ -33,8 +33,7 @@
     "react-dom": "^18.3.1",
     "ws": "^8.18.0",
     "y-websocket": "^2.0.4",
-    "yjs": "^13.6.20",
-    "zustand": "^5.0.1"
+    "yjs": "^13.6.20"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.16",

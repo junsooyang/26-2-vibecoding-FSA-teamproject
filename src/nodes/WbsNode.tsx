@@ -1,12 +1,8 @@
 import { NodeResizer, type NodeProps } from '@xyflow/react'
 import type { Attachment, WbsStatus } from '../collab/yjs'
 import { useCurrentUsername } from './CurrentUserContext'
-import {
-  CHECKLIST_TOGGLE_EVENT,
-  NODE_COLLAPSE_EVENT,
-  NODE_RESIZE_EVENT,
-  WBS_TOGGLE_DONE_EVENT,
-} from './nodeEvents'
+import { CHECKLIST_TOGGLE_EVENT, NODE_COLLAPSE_EVENT, WBS_TOGGLE_DONE_EVENT } from './nodeEvents'
+import { useLiveResize } from './useLiveResize'
 import { dueBadge, dueState } from '../collab/wbsUtils'
 import NodeHandles from './NodeHandles'
 import VoteButton from './VoteButton'
@@ -29,7 +25,8 @@ export const WBS_STATUS: Record<WbsStatus, { label: string; color: string; bg: s
  * 작업명 + 담당자 + 상태 배지 + 진행률 바를 표시한다.
  * 상/하 핸들로 트리(부모-자식) 연결이 가능하다.
  */
-export default function WbsNode({ id, data, selected, width: liveWidth, height: liveHeight }: NodeProps) {
+export default function WbsNode({ id, data, selected }: NodeProps) {
+  const resize = useLiveResize(id)
   const d = data as {
     label: string
     description?: string
@@ -80,9 +77,10 @@ export default function WbsNode({ id, data, selected, width: liveWidth, height: 
     window.dispatchEvent(new CustomEvent(NODE_COLLAPSE_EVENT, { detail: { id } }))
   }
 
-  // 크기: 끄는 중이면 React Flow 가 알려 주는 실시간 크기, 아니면 공유 저장된 크기 (없으면 CSS 기본)
-  const width = liveWidth && liveWidth > 0 ? liveWidth : d.w
-  const height = liveHeight && liveHeight > 0 ? liveHeight : d.h
+  // 크기: 모서리를 끄는 중이면 그 실시간 크기, 아니면 공유 저장된 크기 (없으면 CSS 기본)
+  // (React Flow 가 주는 측정 크기는 쓰지 않는다 → 겹칠 때 가로로 늘어나는 문제 방지)
+  const width = resize.live?.width ?? d.w
+  const height = resize.live?.height ?? d.h
   const sizeStyle: React.CSSProperties = {
     borderColor: status.color,
     ...(width ? { width } : {}),
@@ -101,13 +99,8 @@ export default function WbsNode({ id, data, selected, width: liveWidth, height: 
         isVisible={selected}
         minWidth={180}
         minHeight={110}
-        onResizeEnd={(_e, params) => {
-          window.dispatchEvent(
-            new CustomEvent(NODE_RESIZE_EVENT, {
-              detail: { id, w: Math.round(params.width), h: Math.round(params.height) },
-            }),
-          )
-        }}
+        onResize={resize.onResize}
+        onResizeEnd={resize.onResizeEnd}
       />
       <NodeHandles />
 

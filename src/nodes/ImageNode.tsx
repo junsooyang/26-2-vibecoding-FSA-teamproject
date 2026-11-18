@@ -3,8 +3,8 @@ import { NodeResizer, type NodeProps } from '@xyflow/react'
 import type { ImageNodeData } from '../collab/yjs'
 import { fetchFileBlobUrl, isFileRef } from '../api/client'
 import { safeImageSrc } from '../collab/safeUrl'
-import { NODE_RESIZE_EVENT } from './nodeEvents'
 import NodeHandles from './NodeHandles'
+import { useLiveResize } from './useLiveResize'
 import DeleteNodeButton from './DeleteNodeButton'
 
 /** 사진 노드 최소 너비(px) */
@@ -51,12 +51,13 @@ function useImageSrc(src: string | undefined) {
  * 업로드한 사진(서버 파일 참조)과 예전 방식의 data URL 을 캔버스에 표시한다.
  * 상/하/좌/우 핸들로 어느 방향으로든 다른 노드와 연결할 수 있다.
  */
-export default function ImageNode({ id, data, selected, width: liveWidth }: NodeProps) {
+export default function ImageNode({ id, data, selected }: NodeProps) {
+  const resize = useLiveResize(id)
   const d = data as ImageNodeData & { w?: number }
   // 모서리를 끌어 조절한 너비(w, 공유 저장) > 처음 넣을 때 너비(width) > 기본 200px
   const savedWidth = Math.max(MIN_WIDTH, Number(d.w) || Number(d.width) || 200)
-  // 끄는 중에는 React Flow 가 알려 주는 실시간 너비를 따라간다
-  const width = liveWidth && liveWidth > 0 ? liveWidth : savedWidth
+  // 모서리를 끄는 중에는 그 실시간 너비를 따라간다 (측정 크기는 쓰지 않아 겹쳐도 커지지 않는다)
+  const width = resize.live?.width ?? savedWidth
   // 공유 문서의 값은 누구나 바꿀 수 있으므로, 허용된 형식의 주소만 쓴다 (외부 주소·스크립트 차단)
   const { resolved, failed, loading } = useImageSrc(safeImageSrc(d.src))
 
@@ -67,13 +68,8 @@ export default function ImageNode({ id, data, selected, width: liveWidth }: Node
         isVisible={selected}
         minWidth={MIN_WIDTH}
         keepAspectRatio
-        onResizeEnd={(_e, params) => {
-          window.dispatchEvent(
-            new CustomEvent(NODE_RESIZE_EVENT, {
-              detail: { id, w: Math.round(params.width), h: Math.round(params.height) },
-            }),
-          )
-        }}
+        onResize={resize.onResize}
+        onResizeEnd={resize.onResizeEnd}
       />
       <NodeHandles />
 
